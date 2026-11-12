@@ -1,0 +1,1039 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0f14">
+<title>سیگنال‌های ساحل — Sahil Signals</title>
+<style>
+  :root{
+    --bg:#0b0f14; --card:#131a22; --card2:#0f151c; --line:#243040;
+    --txt:#eef3f8; --dim:#9db0c3; --green:#22c55e; --red:#ef4444;
+    --amber:#f59e0b; --blue:#38bdf8; --chip:#1b2634;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0; padding:0}
+  body{background:var(--bg); color:var(--txt); font-family:Tahoma,"Segoe UI",system-ui,sans-serif; font-size:17px; line-height:1.5}
+  .wrap{max-width:1100px; margin:0 auto; padding:12px 12px 28px}
+  header.top{display:flex; flex-wrap:wrap; gap:12px; align-items:center; justify-content:space-between; margin-bottom:12px}
+  h1{font-size:22px; margin:0}
+  h1 .en{color:var(--dim); font-size:14px; font-weight:normal}
+  .clockbox{text-align:center}
+  .kabul-clock{font-size:26px; font-weight:bold; direction:ltr; font-variant-numeric:tabular-nums}
+  .clock-label{color:var(--dim); font-size:13px}
+  .countbox{display:flex; align-items:center; gap:10px}
+  .ringwrap{position:relative; width:74px; height:74px}
+  .ringwrap svg{transform:rotate(-90deg)}
+  .countnum{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:bold; font-variant-numeric:tabular-nums}
+  .count-label{color:var(--dim); font-size:13px; max-width:90px}
+  .status{border:1px solid var(--line); background:var(--card2); border-radius:10px; padding:8px 12px; font-size:14px; color:var(--dim); margin-bottom:12px; display:flex; flex-wrap:wrap; gap:6px 16px; justify-content:space-between}
+  .status b{color:var(--txt)}
+  .status .err{color:var(--red); font-weight:bold}
+  .pairs{display:grid; grid-template-columns:1fr; gap:14px}
+  @media (min-width:900px){
+    .pairs{grid-template-columns:1fr 1fr}
+    body{font-size:18px}
+    h1{font-size:26px}
+    .kabul-clock{font-size:32px}
+  }
+  .card{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px}
+  .card-head{display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px}
+  .pair-name{font-size:24px; font-weight:bold; direction:ltr}
+  .price{direction:ltr; font-variant-numeric:tabular-nums; color:var(--dim); font-size:18px}
+  .price b{color:var(--txt)}
+  .dbadge{display:inline-block; border-radius:999px; padding:4px 14px; font-weight:bold; font-size:17px; margin:10px 0 4px}
+  .dbadge.up{background:rgba(34,197,94,.15); color:var(--green); border:1px solid var(--green)}
+  .dbadge.down{background:rgba(239,68,68,.15); color:var(--red); border:1px solid var(--red)}
+  .dbadge.flat{background:rgba(157,176,195,.12); color:var(--dim); border:1px solid var(--dim)}
+  .score{color:var(--dim); font-size:13px; direction:ltr}
+  .tf-group{margin-top:10px}
+  .tf-group .glabel{color:var(--dim); font-size:13.5px; margin-bottom:6px}
+  .chips{display:flex; flex-wrap:wrap; gap:6px}
+  .chip{background:var(--chip); border:1px solid var(--line); border-radius:10px; padding:5px 9px; text-align:center; min-width:56px}
+  .chip .tf{display:block; font-size:12px; color:var(--dim); direction:ltr}
+  .chip .arw{font-size:19px; line-height:1.15}
+  .chip.up .arw{color:var(--green)} .chip.down .arw{color:var(--red)} .chip.flat .arw{color:var(--dim)}
+  .rot{margin-top:12px; font-size:15.5px}
+  .rot .item{display:inline-block; margin-inline-end:12px; direction:ltr}
+  .ok{color:var(--green); font-weight:bold} .no{color:var(--red)} .wait{color:var(--amber)}
+  .trig{margin-top:8px; color:var(--dim); font-size:15px}
+  .trig b{color:var(--txt)}
+  .verdict{margin-top:10px; border-top:1px dashed var(--line); padding-top:10px; font-size:16px}
+  .banner{border-radius:16px; padding:16px; margin-bottom:14px; display:none; border:2px solid}
+  .banner.show{display:block}
+  .banner.buy{background:rgba(34,197,94,.13); border-color:var(--green)}
+  .banner.sell{background:rgba(239,68,68,.13); border-color:var(--red)}
+  .banner.spike{background:rgba(245,158,11,.10); border-color:var(--amber)}
+  .banner .big{font-size:27px; font-weight:bold}
+  .banner .meta{color:var(--txt); font-size:16px}
+  .banner button{float:left; background:transparent; border:1px solid var(--line); color:var(--dim); border-radius:8px; padding:4px 12px; font-size:14px; cursor:pointer}
+  .panel{background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px; margin-top:14px}
+  .panel h2{font-size:19px; margin:0 0 8px}
+  .counters{display:flex; gap:18px; flex-wrap:wrap; font-size:17px}
+  .counters b{direction:ltr}
+  .hist{list-style:none; margin:10px 0 0; padding:0}
+  .hist li{border-top:1px solid var(--line); padding:8px 2px; display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; font-size:15.5px}
+  .hist .pn{direction:ltr; font-weight:bold}
+  .res-win{color:var(--green); font-weight:bold} .res-loss{color:var(--red); font-weight:bold} .res-push{color:var(--amber); font-weight:bold} .res-pend{color:var(--dim)}
+  .soundbtn{background:var(--chip); color:var(--txt); border:1px solid var(--line); border-radius:10px; padding:9px 16px; font-size:16px; cursor:pointer}
+  footer{margin-top:16px; color:var(--dim); font-size:13.5px; border-top:1px solid var(--line); padding-top:10px}
+  .hidden{display:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>سیگنال‌های ساحل <span class="en">Sahil Signals</span></h1>
+      <div style="color:var(--dim); font-size:14px">استراتژی نهایی — ۹ صفحه و سیشن · کاغذی (Paper)</div>
+    </div>
+    <div class="clockbox">
+      <div class="kabul-clock" id="kabulClock">--:--:--</div>
+      <div class="clock-label">ساعت کابل</div>
+    </div>
+    <div class="countbox">
+      <div class="ringwrap">
+        <svg width="74" height="74" viewBox="0 0 74 74">
+          <circle cx="37" cy="37" r="32" fill="none" stroke="#243040" stroke-width="6"/>
+          <circle id="ring" cx="37" cy="37" r="32" fill="none" stroke="#38bdf8" stroke-width="6" stroke-linecap="round" stroke-dasharray="201" stroke-dashoffset="0"/>
+        </svg>
+        <div class="countnum" id="countNum">--</div>
+      </div>
+      <div class="count-label">ثانیه تا بسته‌شدن کندل ۱ دقیقه</div>
+    </div>
+    <button class="soundbtn" id="soundBtn">🔔 فعال‌کردن صدا و لرزش</button>
+  </header>
+
+  <div class="status" id="statusBar">
+    <span>منبع داده: <b id="srcName">—</b></span>
+    <span>آخرین به‌روزرسانی: <b id="lastUpd">—</b></span>
+    <span id="statusMsg"></span>
+  </div>
+
+  <div class="banner" id="signalBanner">
+    <button id="bannerClose">بستن ✕</button>
+    <div class="big" id="bannerBig"></div>
+    <div class="meta" id="bannerMeta"></div>
+  </div>
+
+  <div class="pairs" id="pairs"></div>
+
+  <div class="panel">
+    <h2>📊 امروز (کاغذی، روی همین موبایل)</h2>
+    <div class="counters">
+      <span>سیگنال‌ها: <b id="cntAll">0</b></span>
+      <span>✅ برد: <b id="cntWin">0</b></span>
+      <span>❌ باخت: <b id="cntLoss">0</b></span>
+      <span>➖ مساوی: <b id="cntPush">0</b></span>
+    </div>
+    <ul class="hist" id="histList"></ul>
+    <div id="histEmpty" style="color:var(--dim); margin-top:8px">هنوز سیگنالی نیامده است — سیگنال فقط وقتی می‌آید که هر لایه پاس شود؛ کم آمدنش عادی است.</div>
+  </div>
+
+  <footer>
+    <div>داده: کندل بین‌بانکی (Yahoo) — نه OTC خود Quotex؛ ساعت و جهت یکی است، قیمت چند پیپ فرق می‌کند.</div>
+    <div>چک فاندامنتال و خبر در تشخیص سیشن چت است — این اپ فقط بخش تکنیکال (۹ صفحه + چرخش + تریگر) را حساب می‌کند.</div>
+    <div>سیگنال‌ها کاغذی‌اند (Paper) — برای تمرین و تأیید زنده؛ نتیجهٔ بک‌تست کلی زیر سر‌به‌سر بود و GBP/AUD قوی‌ترین بخش بود.</div>
+  </footer>
+</div>
+
+<script>
+/*ENGINE-START*/
+/* Sahil Signals engine — faithful JS port of the Python engines:
+   robot.py (ema/rsi/atr, Context, evaluate, pattern_direction),
+   tournament.py (PairCtx pieces: ema50, macd_hist, s5; S1 = robot.evaluate),
+   tournament_mtf.py (resample), tournament_fullstack.py (_ends_fixed/_ends_next),
+   tournament_precise.py (smc_bias_values), tournament_user_rule.py (Variant U D),
+   final_robot.py (rotation gate, spike guard). No DOM in this block. */
+"use strict";
+
+/* ---------------- indicators (robot.py) ---------------- */
+function emaSeries(values, period) {
+  const out = new Array(values.length).fill(null);
+  if (values.length < period) return out;
+  const k = 2.0 / (period + 1);
+  let ema = 0;
+  for (let i = 0; i < period; i++) ema += values[i];
+  ema = ema / period;
+  out[period - 1] = ema;
+  for (let i = period; i < values.length; i++) {
+    ema = values[i] * k + ema * (1 - k);
+    out[i] = ema;
+  }
+  return out;
+}
+
+function rsiSeries(closes, period) {
+  period = period === undefined ? 14 : period;
+  const out = new Array(closes.length).fill(null);
+  if (closes.length <= period) return out;
+  let avgG = 0, avgL = 0;
+  for (let i = 1; i <= period; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgG += Math.max(d, 0.0);
+    avgL += Math.max(-d, 0.0);
+  }
+  avgG /= period; avgL /= period;
+  const calc = (g, l) => (l === 0 ? 100.0 : 100.0 - 100.0 / (1.0 + g / l));
+  out[period] = calc(avgG, avgL);
+  for (let i = period + 1; i < closes.length; i++) {
+    const d = closes[i] - closes[i - 1];
+    avgG = (avgG * (period - 1) + Math.max(d, 0.0)) / period;
+    avgL = (avgL * (period - 1) + Math.max(-d, 0.0)) / period;
+    out[i] = calc(avgG, avgL);
+  }
+  return out;
+}
+
+function atrSeries(candles, period) {
+  period = period === undefined ? 14 : period;
+  const out = new Array(candles.length).fill(null);
+  if (candles.length <= period) return out;
+  const trs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const c = candles[i], prev = candles[i - 1].c;
+    trs.push(Math.max(c.h - c.l, Math.abs(c.h - prev), Math.abs(c.l - prev)));
+  }
+  let atr = 0;
+  for (let i = 0; i < period; i++) atr += trs[i];
+  atr /= period;
+  out[period] = atr;
+  for (let i = period + 1; i < candles.length; i++) {
+    atr = (atr * (period - 1) + trs[i - 1]) / period;
+    out[i] = atr;
+  }
+  return out;
+}
+
+/* ---------------- resample (tournament_mtf.resample) ---------------- */
+function resample(m1, periodMin) {
+  const p = periodMin * 60;
+  const buckets = new Map();
+  for (const c of m1) {
+    const b = Math.floor(c.t / p) * p;
+    if (!buckets.has(b)) {
+      buckets.set(b, { t: b, o: c.o, h: c.h, l: c.l, c: c.c });
+    } else {
+      const k = buckets.get(b);
+      k.h = Math.max(k.h, c.h); k.l = Math.min(k.l, c.l); k.c = c.c;
+    }
+  }
+  return [...buckets.keys()].sort((a, b) => a - b).map((b) => buckets.get(b));
+}
+
+/* ---------------- robot.py pattern + Context + evaluate (S1) ---------------- */
+function patternDirection(candles, idx, atr) {
+  if (idx < 3 || atr === null || atr <= 0) return 0;
+  const c = candles[idx], p = candles[idx - 1];
+  const rng = c.h - c.l;
+  if (rng <= 0) return 0;
+  const body = Math.abs(c.c - c.o);
+  const found = [];
+  if (p.c < p.o && c.c > c.o && c.c >= p.o && c.o <= p.c) found.push(1);
+  else if (p.c > p.o && c.c < c.o && c.c <= p.o && c.o >= p.c) found.push(-1);
+  const upper = c.h - Math.max(c.o, c.c);
+  const lower = Math.min(c.o, c.c) - c.l;
+  if (body <= 0.35 * rng) {
+    if (lower >= 0.55 * rng && upper <= 0.25 * rng) found.push(1);
+    else if (upper >= 0.55 * rng && lower <= 0.25 * rng) found.push(-1);
+  }
+  const last3 = candles.slice(idx - 2, idx + 1);
+  const posRange = last3.filter((x) => (x.h - x.l) > 0);
+  const strongOk = (x) => Math.abs(x.c - x.o) >= 0.5 * (x.h - x.l) && Math.abs(x.c - x.o) >= 0.4 * atr;
+  if (last3.every((x) => x.c > x.o) && posRange.every(strongOk)) {
+    if (posRange.length === 3) found.push(1);
+  } else if (last3.every((x) => x.c < x.o) && posRange.every(strongOk)) {
+    if (posRange.length === 3) found.push(-1);
+  }
+  if (!found.length) return 0;
+  return found.every((d) => d === found[0]) ? found[0] : 0;
+}
+
+function makeRobotContext(m1) {
+  const closes = m1.map((c) => c.c);
+  const m5 = resample(m1, 5);
+  const m5closes = m5.map((c) => c.c);
+  return {
+    m1: m1,
+    ema9: emaSeries(closes, 9),
+    ema21: emaSeries(closes, 21),
+    rsi: rsiSeries(closes, 14),
+    atr: atrSeries(m1, 14),
+    m5: m5,
+    m5Ema9: emaSeries(m5closes, 9),
+    m5Ema21: emaSeries(m5closes, 21),
+    m5CloseTimes: m5.map((c) => c.t + 300),
+  };
+}
+
+function m5Trend(ctx, signalCloseTime) {
+  const times = ctx.m5CloseTimes;
+  let lo = 0, hi = times.length - 1, best = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= signalCloseTime) { best = mid; lo = mid + 1; }
+    else hi = mid - 1;
+  }
+  if (best < 0) return 0;
+  const e9 = ctx.m5Ema9[best], e21 = ctx.m5Ema21[best];
+  if (e9 === null || e21 === null || e9 === e21) return 0;
+  return e9 > e21 ? 1 : -1;
+}
+
+function evaluateS1(ctx, idx) {
+  const m1 = ctx.m1;
+  if (idx < 50) return 0;
+  const e9 = ctx.ema9[idx], e21 = ctx.ema21[idx];
+  const rsi = ctx.rsi[idx], atr = ctx.atr[idx];
+  if (e9 === null || e21 === null || rsi === null || atr === null || atr <= 0) return 0;
+  const c = m1[idx];
+  const body = Math.abs(c.c - c.o);
+  const rng = c.h - c.l;
+  if (rng <= 0 || body / rng < 0.10 || body < 0.20 * atr) return 0;
+  if (Math.abs(e9 - e21) < 0.15 * atr) return 0;
+  let crosses = 0;
+  for (let j = Math.max(21, idx - 29); j < idx; j++) {
+    const a = ctx.ema9[j], b = ctx.ema21[j], a2 = ctx.ema9[j + 1], b2 = ctx.ema21[j + 1];
+    if (a === null || b === null || a2 === null || b2 === null) continue;
+    if ((a - b) * (a2 - b2) < 0) crosses += 1;
+  }
+  if (crosses >= 4) return 0;
+  const m1Trend = e9 > e21 ? 1 : -1;
+  const m5t = m5Trend(ctx, c.t + 60);
+  const trendDir = (m5t !== 0 && m5t === m1Trend) ? m1Trend : 0;
+  const patDir = patternDirection(m1, idx, atr);
+  if (trendDir !== 0 && patDir !== 0 && trendDir !== patDir) return 0;
+  const candidate = trendDir !== 0 ? trendDir : patDir;
+  if (candidate === 0) return 0;
+  if (candidate === 1 && rsi > 70) return 0;
+  if (candidate === -1 && rsi < 30) return 0;
+  let rsiDir = 0;
+  if (rsi > 50 && rsi <= 70) rsiDir = 1;
+  else if (rsi >= 30 && rsi < 50) rsiDir = -1;
+  let votes = 0;
+  if (trendDir === candidate) votes += 1;
+  if (patDir === candidate) votes += 1;
+  if (rsiDir === candidate) votes += 1;
+  return votes >= 2 ? candidate : 0;
+}
+
+/* ---------------- tournament.py macd_hist + s5 ---------------- */
+function macdHist(closes) {
+  const e12 = emaSeries(closes, 12);
+  const e26 = emaSeries(closes, 26);
+  const macd = new Array(closes.length).fill(null);
+  for (let i = 0; i < closes.length; i++) {
+    if (e12[i] !== null && e26[i] !== null) macd[i] = e12[i] - e26[i];
+  }
+  const hist = new Array(closes.length).fill(null);
+  let first = -1;
+  for (let i = 0; i < macd.length; i++) { if (macd[i] !== null) { first = i; break; } }
+  if (first < 0) return hist;
+  const seg = macd.slice(first);
+  const sigSeg = emaSeries(seg, 9);
+  for (let j = 0; j < sigSeg.length; j++) {
+    if (sigSeg[j] !== null) hist[first + j] = seg[j] - sigSeg[j];
+  }
+  return hist;
+}
+
+function makePairCtx(m1) {
+  const closes = m1.map((c) => c.c);
+  return {
+    m1: m1, closes: closes,
+    ema50: emaSeries(closes, 50),
+    atr: atrSeries(m1, 14),
+    hist: macdHist(closes),
+    robotCtx: makeRobotContext(m1),
+  };
+}
+
+function s5(ctx, idx) {
+  if (idx < 1) return 0;
+  const h = ctx.hist[idx], hp = ctx.hist[idx - 1], e50 = ctx.ema50[idx];
+  if (h === null || hp === null || e50 === null) return 0;
+  if (hp <= 0 && h > 0 && ctx.closes[idx] > e50) return 1;
+  if (hp >= 0 && h < 0 && ctx.closes[idx] < e50) return -1;
+  return 0;
+}
+
+function s1Trigger(ctx, idx) {
+  return evaluateS1(ctx.robotCtx, idx);
+}
+
+/* ---------------- SMC composite bias (tournament_precise.smc_bias_values) ---------------- */
+const SMC = { ZONE_PROX_ATR: 1.0, MAGNET_ATR: 2.0, POOL_TOL_ATR: 0.1, SWEEP_FRESH: 20, OB_LOOKBACK: 100 };
+
+function zoneDist(lo, hi, price) {
+  if (price < lo) return lo - price;
+  if (price > hi) return price - hi;
+  return 0.0;
+}
+
+function smcBiasValues(candles) {
+  const n = candles.length;
+  const closes = candles.map((c) => c.c);
+  const e9 = emaSeries(closes, 9);
+  const e21 = emaSeries(closes, 21);
+  const atr = atrSeries(candles, 14);
+  const out = new Array(n).fill(0);
+  let structure = 0;
+  let lastSh = null, lastSl = null;
+  let bullOb = null, bearOb = null;
+  let bullBreaker = null, bearBreaker = null;
+  let bullFvg = null, bearFvg = null;
+  let bullIfvg = null, bearIfvg = null;
+  let liqHi = null, liqLo = null;
+  let poolHi = null, poolLo = null;
+  let lastSweep = null; // [idx, dir]
+
+  for (let j = 0; j < n; j++) {
+    const c = candles[j];
+    const a = atr[j];
+
+    /* 1) confirm fractal swing at i = j-2 */
+    const i = j - 2;
+    if (i >= 2) {
+      const cc = candles[i];
+      if (cc.h > candles[i - 1].h && cc.h > candles[i - 2].h &&
+          cc.h > candles[i + 1].h && cc.h > candles[i + 2].h) {
+        const tol = a ? SMC.POOL_TOL_ATR * a : 0.0;
+        if (lastSh !== null && liqHi !== null && Math.abs(cc.h - lastSh.price) <= tol) {
+          poolHi = Math.max(cc.h, lastSh.price);
+        }
+        lastSh = { idx: i, price: cc.h, used: false };
+        liqHi = cc.h;
+      }
+      if (cc.l < candles[i - 1].l && cc.l < candles[i - 2].l &&
+          cc.l < candles[i + 1].l && cc.l < candles[i + 2].l) {
+        const tol = a ? SMC.POOL_TOL_ATR * a : 0.0;
+        if (lastSl !== null && liqLo !== null && Math.abs(cc.l - lastSl.price) <= tol) {
+          poolLo = Math.min(cc.l, lastSl.price);
+        }
+        lastSl = { idx: i, price: cc.l, used: false };
+        liqLo = cc.l;
+      }
+    }
+
+    /* 2) structure breaks */
+    if (lastSh !== null && !lastSh.used && c.c > lastSh.price) {
+      structure = 1;
+      lastSh.used = true;
+      let ob = null;
+      for (let k = j; k >= Math.max(0, j - SMC.OB_LOOKBACK); k--) {
+        if (candles[k].c < candles[k].o) { ob = { lo: candles[k].l, hi: candles[k].h }; break; }
+      }
+      if (ob) bullOb = ob;
+    }
+    if (lastSl !== null && !lastSl.used && c.c < lastSl.price) {
+      structure = -1;
+      lastSl.used = true;
+      let ob = null;
+      for (let k = j; k >= Math.max(0, j - SMC.OB_LOOKBACK); k--) {
+        if (candles[k].c > candles[k].o) { ob = { lo: candles[k].l, hi: candles[k].h }; break; }
+      }
+      if (ob) bearOb = ob;
+    }
+
+    /* 3) OB invalidation -> breaker; breaker reclaim -> dead */
+    if (bullOb !== null && c.c < bullOb.lo) { bearBreaker = bullOb; bullOb = null; }
+    if (bearOb !== null && c.c > bearOb.hi) { bullBreaker = bearOb; bearOb = null; }
+    if (bullBreaker !== null && c.c < bullBreaker.lo) bullBreaker = null;
+    if (bearBreaker !== null && c.c > bearBreaker.hi) bearBreaker = null;
+
+    /* 4) FVG formation */
+    if (j >= 2) {
+      if (c.l > candles[j - 2].h) bullFvg = { lo: candles[j - 2].h, hi: c.l };
+      if (c.h < candles[j - 2].l) bearFvg = { lo: c.h, hi: candles[j - 2].l };
+    }
+    /* 5) FVG mitigation / inversion; IFVG death */
+    if (bullFvg !== null) {
+      if (c.c < bullFvg.lo) { bearIfvg = bullFvg; bullFvg = null; }
+      else if (c.l <= bullFvg.lo) bullFvg = null;
+    }
+    if (bearFvg !== null) {
+      if (c.c > bearFvg.hi) { bullIfvg = bearFvg; bearFvg = null; }
+      else if (c.h >= bearFvg.hi) bearFvg = null;
+    }
+    if (bullIfvg !== null && c.l < bullIfvg.lo) bullIfvg = null;
+    if (bearIfvg !== null && c.h > bearIfvg.hi) bearIfvg = null;
+
+    /* 6) liquidity sweeps / breakouts */
+    const sides = [
+      { side: "hi", getLiq: () => liqHi, getPool: () => poolHi,
+        setLiq: (v) => { liqHi = v; }, setPool: (v) => { poolHi = v; } },
+      { side: "lo", getLiq: () => liqLo, getPool: () => poolLo,
+        setLiq: (v) => { liqLo = v; }, setPool: (v) => { poolLo = v; } },
+    ];
+    for (const S of sides) {
+      const levels = [];
+      const lq = S.getLiq(), pl = S.getPool();
+      if (lq !== null) levels.push(["liq", lq]);
+      if (pl !== null && pl !== lq) levels.push(["pool", pl]);
+      for (const [kind, lvl] of levels) {
+        const clear = () => { if (kind === "liq") S.setLiq(null); else S.setPool(null); };
+        if (S.side === "hi") {
+          if (c.h > lvl && c.c < lvl) { lastSweep = [j, -1]; clear(); }
+          else if (c.c > lvl) clear();
+        } else {
+          if (c.l < lvl && c.c > lvl) { lastSweep = [j, 1]; clear(); }
+          else if (c.c < lvl) clear();
+        }
+      }
+    }
+
+    /* 7) votes */
+    let score = 0;
+    if (e9[j] !== null && e21[j] !== null && e9[j] !== e21[j]) score += e9[j] > e21[j] ? 1 : -1;
+    if (c.c !== c.o) score += c.c > c.o ? 1 : -1;
+    score += 2 * structure;
+    if (a) {
+      const px = c.c;
+      if (bullOb !== null && px >= bullOb.lo && zoneDist(bullOb.lo, bullOb.hi, px) <= SMC.ZONE_PROX_ATR * a) score += 1;
+      if (bearOb !== null && px <= bearOb.hi && zoneDist(bearOb.lo, bearOb.hi, px) <= SMC.ZONE_PROX_ATR * a) score -= 1;
+      if (bullBreaker !== null && px >= bullBreaker.lo && zoneDist(bullBreaker.lo, bullBreaker.hi, px) <= SMC.ZONE_PROX_ATR * a) score += 1;
+      if (bearBreaker !== null && px <= bearBreaker.hi && zoneDist(bearBreaker.lo, bearBreaker.hi, px) <= SMC.ZONE_PROX_ATR * a) score -= 1;
+      if (bullFvg !== null && px >= bullFvg.lo && zoneDist(bullFvg.lo, bullFvg.hi, px) <= SMC.ZONE_PROX_ATR * a) score += 1;
+      if (bearFvg !== null && px <= bearFvg.hi && zoneDist(bearFvg.lo, bearFvg.hi, px) <= SMC.ZONE_PROX_ATR * a) score -= 1;
+      if (bullIfvg !== null && px >= bullIfvg.lo && zoneDist(bullIfvg.lo, bullIfvg.hi, px) <= SMC.ZONE_PROX_ATR * a) score += 1;
+      if (bearIfvg !== null && px <= bearIfvg.hi && zoneDist(bearIfvg.lo, bearIfvg.hi, px) <= SMC.ZONE_PROX_ATR * a) score -= 1;
+      if (lastSweep !== null && j - lastSweep[0] <= SMC.SWEEP_FRESH) {
+        score += lastSweep[1];
+      } else {
+        const above = [], below = [];
+        for (const lvl of [liqHi, poolHi]) if (lvl !== null && lvl > px) above.push(lvl - px);
+        for (const lvl of [liqLo, poolLo]) if (lvl !== null && lvl < px) below.push(px - lvl);
+        const da = above.length ? Math.min(...above) : null;
+        const db = below.length ? Math.min(...below) : null;
+        if (da !== null && da <= SMC.MAGNET_ATR * a && (db === null || da < db)) score += 1;
+        else if (db !== null && db <= SMC.MAGNET_ATR * a && (da === null || db < da)) score -= 1;
+      }
+    }
+    out[j] = score >= 2 ? 1 : (score <= -2 ? -1 : 0);
+  }
+  return out;
+}
+
+/* ---------------- series assembly (tf_series / build_series) ---------------- */
+function endsFixed(candles, periodSec) {
+  return candles.map((c) => c.t + periodSec);
+}
+
+function endsNext(candles) {
+  const ends = [];
+  for (let i = 0; i < candles.length; i++) {
+    if (i + 1 < candles.length) ends.push(candles[i + 1].t);
+    else {
+      const dt = new Date(candles[i].t * 1000);
+      const y = dt.getUTCFullYear(), mo = dt.getUTCMonth();
+      const ny = mo === 11 ? y + 1 : y;
+      const nm = mo === 11 ? 0 : mo + 1;
+      ends.push(Date.UTC(ny, nm, 1) / 1000);
+    }
+  }
+  return ends;
+}
+
+/* htf = {H1:[], Daily:[], Weekly:[], Monthly:[]} raw candle arrays (may be empty) */
+function buildSeries(m1, htf) {
+  const out = {};
+  out.M1 = { candles: m1, ends: endsFixed(m1, 60) };
+  for (const [tf, p] of [["M3", 3], ["M5", 5], ["M15", 15]]) {
+    const cs = resample(m1, p);
+    out[tf] = { candles: cs, ends: endsFixed(cs, p * 60) };
+  }
+  const h1 = htf.H1 || [];
+  if (h1.length) {
+    out.H1 = { candles: h1, ends: endsFixed(h1, 3600) };
+    const h4 = resample(h1, 240);
+    out.H4 = { candles: h4, ends: endsFixed(h4, 4 * 3600) };
+  } else {
+    out.H1 = { candles: [], ends: [] };
+    out.H4 = { candles: [], ends: [] };
+  }
+  const daily = htf.Daily || [];
+  out.Daily = daily.length ? { candles: daily, ends: endsFixed(daily, 86400) } : { candles: [], ends: [] };
+  const weekly = htf.Weekly || [];
+  out.Weekly = weekly.length ? { candles: weekly, ends: endsFixed(weekly, 7 * 86400) } : { candles: [], ends: [] };
+  const monthly = htf.Monthly || [];
+  out.Monthly = monthly.length ? { candles: monthly, ends: endsNext(monthly) } : { candles: [], ends: [] };
+  return out;
+}
+
+function mapToM1(m1, values, ends, ncandles) {
+  const out = new Array(m1.length).fill(0);
+  let j = -1;
+  for (let i = 0; i < m1.length; i++) {
+    const moment = m1[i].t + 60;
+    while (j + 1 < ncandles && ends[j + 1] <= moment) j += 1;
+    out[i] = j >= 0 ? values[j] : 0;
+  }
+  return out;
+}
+
+/* ---------------- Variant U top direction + final gates ---------------- */
+const TF_ORDER = ["Monthly", "Weekly", "Daily", "H4", "H1", "M15", "M5", "M3", "M1"];
+const WEIGHTS = { Monthly: 32, Weekly: 24, Daily: 18, H4: 12, H1: 8, M15: 5, M5: 3, M3: 2, M1: 1 };
+const TOP_TFS = ["Monthly", "Weekly", "Daily", "H4", "H1", "M15"];
+const TOP_WSUM = 99;
+const D_THRESH = 0.15;
+
+function topDirection(biases) {
+  let s = 0;
+  for (const tf of TOP_TFS) s += WEIGHTS[tf] * biases[tf];
+  s /= TOP_WSUM;
+  return { score: s, D: s >= D_THRESH ? 1 : (s <= -D_THRESH ? -1 : 0) };
+}
+
+function rotationPass(biases, D) {
+  if (D === 0) return false;
+  if (biases.M15 === -D) return false;
+  return biases.M5 === D && biases.M3 === D && biases.M1 === D;
+}
+
+/* Full evaluation at 1m index idx. triggerName: "S5" (GBP/AUD) or "S1" (USD/JPY). */
+function evaluateAt(m1, htf, idx, pairCtx, triggerName) {
+  const series = buildSeries(m1, htf);
+  const biases = {};
+  for (const tf of TF_ORDER) {
+    const s = series[tf];
+    if (!s.candles.length) { biases[tf] = 0; continue; }
+    const vals = smcBiasValues(s.candles);
+    const mapped = mapToM1(m1, vals, s.ends, s.candles.length);
+    biases[tf] = mapped[idx];
+  }
+  const { score, D } = topDirection(biases);
+  const rotation = rotationPass(biases, D);
+  const trigger = triggerName === "S5" ? s5(pairCtx, idx) : s1Trigger(pairCtx, idx);
+  const atr = pairCtx.atr[idx];
+  const range = m1[idx].h - m1[idx].l;
+  const spike = atr !== null && atr > 0 && range > 3 * atr;
+  return { biases: biases, score: score, D: D, rotation: rotation, trigger: trigger, atr: atr, range: range, spike: spike };
+}
+/*ENGINE-END*/
+
+
+/* ================= APP (browser only) ================= */
+(function(){
+"use strict";
+const PAIRS = [
+  { name: "GBP/AUD", symbol: "GBPAUD=X", trigger: "S5", triggerFa: "MACD" },
+  { name: "USD/JPY", symbol: "USDJPY=X", trigger: "S1", triggerFa: "ترند EMA+RSI" },
+];
+const SPECS = [
+  { key: "1m",  interval: "1m",  range: "7d"  },
+  { key: "60m", interval: "60m", range: "3mo" },
+  { key: "1d",  interval: "1d",  range: "1y"  },
+  { key: "1wk", interval: "1wk", range: "2y"  },
+  { key: "1mo", interval: "1mo", range: "10y" },
+];
+const LS_CACHE = "ss1_cache_";
+const LS_HIST = "ss1_history";
+const LS_HTF = "ss1_htf_";
+const state = {};   // per pair runtime state
+let audioCtx = null, soundOn = false;
+
+for (const p of PAIRS) {
+  state[p.name] = {
+    data: {},            // specKey -> candles
+    src: null,           // last good source label
+    pairCtx: null, ctxM1Len: -1,
+    lastClosedT: -1,     // t of last evaluated closed candle
+    eval: null,          // last evaluateAt result
+    evalIdx: -1,
+    pending: null,       // {dir, signalT, entryT}
+    lastSignalT: -1,
+    htfStored: loadJson(LS_HTF + p.name, {}),  // tf -> {bias, end}
+    dataOk: false,
+  };
+}
+
+function loadJson(key, dflt) {
+  try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : dflt; }
+  catch (e) { return dflt; }
+}
+function saveJson(key, val) {
+  try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* quota: ignore */ }
+}
+
+/* ---------- fetch chain ---------- */
+function yahooUrls(symbol, interval, range) {
+  const q = "?interval=" + interval + "&range=" + range;
+  const d1 = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol + q;
+  const d2 = "https://query2.finance.yahoo.com/v8/finance/chart/" + symbol + q;
+  return [
+    { url: d1, label: "Yahoo مستقیم" },
+    { url: d2, label: "Yahoo مستقیم (۲)" },
+    { url: "https://api.allorigins.win/raw?url=" + encodeURIComponent(d1), label: "AllOrigins" },
+    { url: "https://corsproxy.io/?url=" + encodeURIComponent(d1), label: "CorsProxy" },
+  ];
+}
+function parseYahoo(json) {
+  try {
+    const r = json.chart.result[0];
+    const ts = r.timestamp, q = r.indicators.quote[0];
+    const out = [];
+    for (let i = 0; i < ts.length; i++) {
+      const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i];
+      if (o === null || h === null || l === null || c === null) continue;
+      out.push({ t: ts[i], o: o, h: h, l: l, c: c });
+    }
+    out.sort((a, b) => a.t - b.t);
+    return out.length ? out : null;
+  } catch (e) { return null; }
+}
+async function fetchSeries(symbol, spec) {
+  for (const cand of yahooUrls(symbol, spec.interval, spec.range)) {
+    try {
+      const resp = await fetch(cand.url, { cache: "no-store" });
+      if (!resp.ok) continue;
+      const candles = parseYahoo(await resp.json());
+      if (candles) return { candles: candles, src: cand.label };
+    } catch (e) { /* try next */ }
+  }
+  return null;
+}
+
+/* ---------- helpers ---------- */
+const fmtKabul = new Intl.DateTimeFormat("fa-AF", { timeZone: "Asia/Kabul", hour: "2-digit", minute: "2-digit", hour12: false });
+const fmtKabulFull = new Intl.DateTimeFormat("fa-AF", { timeZone: "Asia/Kabul", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+const fmtKabulDay = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kabul", year: "numeric", month: "2-digit", day: "2-digit" });
+function kabulDay(tsSec) { return fmtKabulDay.format(new Date(tsSec * 1000)); }
+function digits(n, dec) {
+  return Number(n).toFixed(dec === undefined ? 5 : dec);
+}
+function arw(v) { return v === 1 ? "▲" : (v === -1 ? "▼" : "●"); }
+function cls(v) { return v === 1 ? "up" : (v === -1 ? "down" : "flat"); }
+function wordD(d) { return d === 1 ? "صعودی ▲" : (d === -1 ? "نزولی ▼" : "خنثی ●"); }
+
+/* bias of one TF series at its last candle closed by `moment`,
+   with the HTF reviewed-once store: recompute only when the last
+   closed candle's END changed. Returns {bias, end}. */
+function tfBiasAtLastClosed(seriesEntry, moment) {
+  const cs = seriesEntry.candles, ends = seriesEntry.ends;
+  let j = -1;
+  for (let i = 0; i < cs.length; i++) { if (ends[i] <= moment) j = i; else break; }
+  if (j < 0) return { bias: 0, end: null, j: -1 };
+  const vals = smcBiasValues(cs.slice(0, j + 1));
+  return { bias: vals[vals.length - 1], end: ends[j], j: j };
+}
+
+/* ---------- rendering ---------- */
+const pairsEl = document.getElementById("pairs");
+const cardEls = {};
+function buildCards() {
+  for (const p of PAIRS) {
+    const div = document.createElement("div");
+    div.className = "card";
+    div.id = "card_" + p.name;
+    div.innerHTML =
+      '<div class="card-head"><span class="pair-name">' + p.name + '</span>' +
+      '<span class="price">قیمت: <b class="js-price">—</b></span></div>' +
+      '<div><span class="dbadge flat js-d">جهت سیشن: —</span> <span class="score js-score"></span></div>' +
+      '<div class="tf-group"><div class="glabel">تایم‌های بالا — یک بار بررسی ✓ (ماهانه تا H1)</div><div class="chips js-htf"></div></div>' +
+      '<div class="tf-group"><div class="glabel">تایم‌های پایین — تازه (M15 تا M1)</div><div class="chips js-ltf"></div></div>' +
+      '<div class="rot js-rot"></div>' +
+      '<div class="trig js-trig"></div>' +
+      '<div class="verdict js-verdict">در حال بارگذاری داده…</div>';
+    pairsEl.appendChild(div);
+    cardEls[p.name] = div;
+  }
+}
+function chipsHtml(tfs, biases) {
+  return tfs.map(function(tf) {
+    const v = biases[tf];
+    return '<span class="chip ' + cls(v) + '"><span class="tf">' + tf + '</span><span class="arw">' + arw(v) + '</span></span>';
+  }).join("");
+}
+function renderPair(p) {
+  const st = state[p.name], el = cardEls[p.name];
+  const ev = st.eval;
+  const priceEl = el.querySelector(".js-price");
+  const m1 = st.data["1m"];
+  if (m1 && m1.length) priceEl.textContent = digits(m1[m1.length - 1].c, p.name === "USD/JPY" ? 3 : 5);
+  const dEl = el.querySelector(".js-d");
+  const scEl = el.querySelector(".js-score");
+  if (!ev) { el.querySelector(".js-verdict").textContent = st.dataOk ? "در حال محاسبه…" : "داده در دسترس نیست"; return; }
+  const b = ev.biases;
+  dEl.className = "dbadge js-d " + (ev.D === 1 ? "up" : (ev.D === -1 ? "down" : "flat"));
+  dEl.textContent = "جهت سیشن: " + wordD(ev.D);
+  scEl.textContent = "score " + (ev.score >= 0 ? "+" : "") + ev.score.toFixed(3);
+  el.querySelector(".js-htf").innerHTML = chipsHtml(["Monthly", "Weekly", "Daily", "H4", "H1"], b);
+  el.querySelector(".js-ltf").innerHTML = chipsHtml(["M15", "M5", "M3", "M1"], b);
+  const rotItem = function(tf, ok, mark) {
+    return '<span class="item">' + tf + ' <span class="' + (ok ? "ok" : "no") + '">' + mark + '</span></span>';
+  };
+  let rot = "چرخش: ";
+  if (ev.D === 0) rot += '<span class="wait">جهت سیشن خنثی است — چرخش معنا ندارد</span>';
+  else {
+    rot += rotItem("M15", b.M15 !== -ev.D, b.M15 === -ev.D ? "✗ مخالف" : "✓");
+    rot += rotItem("M5", b.M5 === ev.D, b.M5 === ev.D ? "✓" : "…");
+    rot += rotItem("M3", b.M3 === ev.D, b.M3 === ev.D ? "✓" : "…");
+    rot += rotItem("M1", b.M1 === ev.D, b.M1 === ev.D ? "✓" : "…");
+    rot += ev.rotation ? ' <span class="ok">کامل شد ✓</span>' : ' <span class="wait">هنوز کامل نیست</span>';
+  }
+  el.querySelector(".js-rot").innerHTML = rot;
+  const trigTxt = ev.trigger === 0 ? "— (سیگنال نیست)" : (ev.trigger === 1 ? "⬆️ فعال شد" : "⬇️ فعال شد");
+  el.querySelector(".js-trig").innerHTML = "تریگر (" + p.triggerFa + "): <b>" + trigTxt + "</b>";
+  el.querySelector(".js-verdict").innerHTML = verdictText(p, ev);
+}
+function verdictText(p, ev) {
+  if (ev.D === 0) return "فیصله: <b>صبر</b> — جهت سیشن خنثی است؛ طرفی برای ترید نیست.";
+  if (!ev.rotation) return "فیصله: <b>صبر</b> — چرخش تایم‌های کوچک به‌سوی جهت سیشن کامل نشده است.";
+  if (ev.trigger === 0) return "فیصله: <b>صبر</b> — چرخش کامل است اما تریگر " + p.triggerFa + " هنوز فعال نشده.";
+  if (ev.trigger !== ev.D) return "فیصله: <b>صبر</b> — تریگر خلاف جهت سیشن آمد؛ گرفته نمی‌شود.";
+  if (ev.spike) return "⚠️ <b>سیگنال رد شد — اسپایک:</b> کندل بیش از حد بزرگ بود (خبر/جهش)؛ ترید نمی‌شود.";
+  return "✅ <b>همهٔ لایه‌ها پاس شد</b> — آخرین سیگنال همین جفت را در تاریخچه ببینید.";
+}
+
+/* ---------- history / counters ---------- */
+function getHistory() { return loadJson(LS_HIST, []); }
+function setHistory(h) { saveJson(LS_HIST, h.slice(-100)); }
+function renderHistory() {
+  const h = getHistory();
+  const today = kabulDay(Math.floor(Date.now() / 1000));
+  const todays = h.filter((x) => x.day === today);
+  document.getElementById("cntAll").textContent = todays.length;
+  document.getElementById("cntWin").textContent = todays.filter((x) => x.result === "win").length;
+  document.getElementById("cntLoss").textContent = todays.filter((x) => x.result === "loss").length;
+  document.getElementById("cntPush").textContent = todays.filter((x) => x.result === "push").length;
+  const list = document.getElementById("histList");
+  const items = h.slice(-12).reverse();
+  document.getElementById("histEmpty").style.display = h.length ? "none" : "block";
+  list.innerHTML = items.map(function(x) {
+    const side = x.dir === 1 ? "⬆️ خرید BUY" : "⬇️ فروش SELL";
+    let res;
+    if (x.result === "win") res = '<span class="res-win">✅ برد</span>';
+    else if (x.result === "loss") res = '<span class="res-loss">❌ باخت</span>';
+    else if (x.result === "push") res = '<span class="res-push">➖ مساوی</span>';
+    else if (x.result === "gap") res = '<span class="res-pend">داده نبود</span>';
+    else res = '<span class="res-pend">⏳ در انتظار نتیجه…</span>';
+    return '<li><span><span class="pn">' + x.pair + '</span> ' + side + " · " + x.kabul + '</span><span>' + res + "</span></li>";
+  }).join("");
+}
+
+/* ---------- sound / vibration ---------- */
+document.getElementById("soundBtn").addEventListener("click", function() {
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    soundOn = true;
+    this.textContent = "🔔 صدا و لرزش فعال است ✓";
+    beep();
+  } catch (e) { this.textContent = "صدا در این مرورگر فعال نشد"; }
+});
+function beep() {
+  if (!soundOn || !audioCtx) return;
+  try {
+    const t0 = audioCtx.currentTime;
+    [880, 1320].forEach(function(f, i) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.frequency.value = f; o.type = "sine";
+      g.gain.setValueAtTime(0.0001, t0 + i * 0.18);
+      g.gain.exponentialRampToValueAtTime(0.25, t0 + i * 0.18 + 0.03);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + i * 0.18 + 0.16);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(t0 + i * 0.18); o.stop(t0 + i * 0.18 + 0.18);
+    });
+  } catch (e) { /* ignore */ }
+}
+function buzz() { try { if (navigator.vibrate) navigator.vibrate([200, 100, 200]); } catch (e) {} }
+
+/* ---------- signal banner ---------- */
+const banner = document.getElementById("signalBanner");
+document.getElementById("bannerClose").addEventListener("click", function() { banner.className = "banner"; });
+function showBanner(kind, big, meta) {
+  banner.className = "banner show " + kind;
+  document.getElementById("bannerBig").textContent = big;
+  document.getElementById("bannerMeta").textContent = meta;
+}
+
+/* ---------- evaluation ---------- */
+function settle(p, st) {
+  if (!st.pending) return;
+  const m1 = st.data["1m"];
+  const entry = m1.find((c) => c.t === st.pending.entryT);
+  if (entry) {
+    const dir = st.pending.dir;
+    let result;
+    if (entry.c === entry.o) result = "push";
+    else if ((entry.c > entry.o) === (dir === 1)) result = "win";
+    else result = "loss";
+    const h = getHistory();
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (h[i].pair === p.name && h[i].signalT === st.pending.signalT && !h[i].result) {
+        h[i].result = result; h[i].entry = entry.o; h[i].exit = entry.c; break;
+      }
+    }
+    setHistory(h); renderHistory();
+    st.pending = null;
+  } else if (Math.floor(Date.now() / 1000) > st.pending.entryT + 180) {
+    const h = getHistory();
+    for (let i = h.length - 1; i >= 0; i--) {
+      if (h[i].pair === p.name && h[i].signalT === st.pending.signalT && !h[i].result) { h[i].result = "gap"; break; }
+    }
+    setHistory(h); renderHistory();
+    st.pending = null;
+  }
+}
+
+function evaluate(p, st) {
+  const m1 = st.data["1m"];
+  if (!m1 || m1.length < 80) return;
+  const nowSec = Math.floor(Date.now() / 1000);
+  let idx = -1;
+  for (let i = m1.length - 1; i >= 0; i--) { if (m1[i].t + 60 <= nowSec) { idx = i; break; } }
+  if (idx < 60) return;
+  const candleT = m1[idx].t;
+  const moment = candleT + 60;
+
+  const htf = {
+    H1: st.data["60m"] || [], Daily: st.data["1d"] || [],
+    Weekly: st.data["1wk"] || [], Monthly: st.data["1mo"] || [],
+  };
+  const series = buildSeries(m1, htf);
+  const biases = {};
+  // LTF fresh
+  for (const tf of ["M15", "M5", "M3", "M1"]) {
+    const r = tfBiasAtLastClosed(series[tf], moment);
+    biases[tf] = r.bias;
+  }
+  // HTF reviewed once: recompute only if that TF's last closed candle end changed
+  for (const tf of ["Monthly", "Weekly", "Daily", "H4", "H1"]) {
+    const s = series[tf];
+    let j = -1;
+    for (let i = 0; i < s.candles.length; i++) { if (s.ends[i] <= moment) j = i; else break; }
+    const end = j >= 0 ? s.ends[j] : null;
+    const stored = st.htfStored[tf];
+    if (stored && stored.end === end) {
+      biases[tf] = stored.bias;
+    } else if (j >= 0) {
+      const vals = smcBiasValues(s.candles.slice(0, j + 1));
+      biases[tf] = vals[vals.length - 1];
+      st.htfStored[tf] = { bias: biases[tf], end: end };
+      saveJson(LS_HTF + p.name, st.htfStored);
+    } else {
+      biases[tf] = 0;
+    }
+  }
+
+  if (!st.pairCtx || st.ctxM1Len !== m1.length || st.ctxLastT !== m1[m1.length - 1].t) {
+    st.pairCtx = makePairCtx(m1);
+    st.ctxM1Len = m1.length;
+    st.ctxLastT = m1[m1.length - 1].t;
+  }
+  const td = topDirection(biases);
+  const rotation = rotationPass(biases, td.D);
+  const trigger = p.trigger === "S5" ? s5(st.pairCtx, idx) : s1Trigger(st.pairCtx, idx);
+  const atr = st.pairCtx.atr[idx];
+  const range = m1[idx].h - m1[idx].l;
+  const spike = atr !== null && atr > 0 && range > 3 * atr;
+  const ev = { biases: biases, score: td.score, D: td.D, rotation: rotation, trigger: trigger, atr: atr, range: range, spike: spike };
+  st.eval = ev; st.evalIdx = idx;
+
+  settle(p, st);
+
+  // new closed candle? then check for a signal on it
+  if (candleT !== st.lastClosedT) {
+    const isFirst = st.lastClosedT === -1;
+    st.lastClosedT = candleT;
+    if (!isFirst && td.D !== 0 && rotation && trigger === td.D) {
+      const kabul = fmtKabul.format(new Date(moment * 1000));
+      if (spike) {
+        showBanner("spike", "⚠️ سیگنال رد شد — اسپایک (" + p.name + ")",
+          "کندل خبر/جهش بود؛ ترید نمی‌شود · ساعت کابل " + kabul);
+        buzz();
+      } else if (st.lastSignalT !== candleT && !st.pending) {
+        st.lastSignalT = candleT;
+        const dir = td.D;
+        st.pending = { dir: dir, signalT: candleT, entryT: candleT + 60 };
+        const h = getHistory();
+        h.push({
+          pair: p.name, dir: dir, signalT: candleT, day: kabulDay(candleT),
+          kabul: kabul,
+          reason: "جهت سیشن " + (dir === 1 ? "صعودی" : "نزولی") + " + چرخش کامل + تریگر " + p.triggerFa,
+          result: null,
+        });
+        setHistory(h); renderHistory();
+        showBanner(dir === 1 ? "buy" : "sell",
+          (dir === 1 ? "🟢 خرید BUY ⬆️ " : "🔴 فروش SELL ⬇️ ") + p.name,
+          "۱ دقیقه · ساعت کابل " + kabul + " · جهت سیشن + چرخش کامل + تریگر " + p.triggerFa);
+        beep(); buzz();
+      }
+    }
+  }
+  renderPair(p);
+}
+
+/* ---------- data refresh ---------- */
+async function refreshPair(p, withHtf) {
+  const st = state[p.name];
+  let ok = false, srcUsed = null;
+  const specs = withHtf ? SPECS : SPECS.slice(0, 1);
+  for (const spec of specs) {
+    const r = await fetchSeries(p.symbol, spec);
+    if (r) {
+      st.data[spec.key] = r.candles; ok = true; srcUsed = r.src;
+      saveJson(LS_CACHE + p.symbol + "_" + spec.key, r.candles);
+    } else if (st.data[spec.key]) {
+      ok = true; // cached copy still usable
+    }
+  }
+  if (srcUsed) st.src = srcUsed;
+  st.dataOk = ok;
+  return ok;
+}
+
+function setStatus() {
+  const srcs = PAIRS.map((p) => state[p.name].src).filter(Boolean);
+  document.getElementById("srcName").textContent = srcs.length ? srcs[0] : "—";
+  document.getElementById("lastUpd").textContent = fmtKabulFull.format(new Date());
+  const anyOk = PAIRS.some((p) => state[p.name].dataOk);
+  const msg = document.getElementById("statusMsg");
+  if (!anyOk) msg.innerHTML = '<span class="err">داده در دسترس نیست — اتصال انترنت را چک کنید (هیچ عددی ساخته نمی‌شود)</span>';
+  else if (srcs.length) msg.textContent = "";
+  else msg.textContent = "نمایش از حافظهٔ محلی (آخرین دادهٔ ذخیره‌شده)";
+}
+
+async function tick(full) {
+  for (const p of PAIRS) { await refreshPair(p, full); }
+  setStatus();
+  for (const p of PAIRS) { evaluate(p, state[p.name]); renderPair(p); }
+}
+
+/* ---------- clock / countdown ---------- */
+function clockTick() {
+  const now = new Date();
+  document.getElementById("kabulClock").textContent = fmtKabulFull.format(now);
+  const remain = 60 - (Math.floor(now.getTime() / 1000) % 60);
+  document.getElementById("countNum").textContent = remain;
+  document.getElementById("ring").style.strokeDashoffset = String(201 * (1 - remain / 60));
+}
+setInterval(clockTick, 250); clockTick();
+
+/* ---------- boot ---------- */
+buildCards();
+for (const p of PAIRS) {
+  const st = state[p.name];
+  for (const spec of SPECS) {
+    const cached = loadJson(LS_CACHE + p.symbol + "_" + spec.key, null);
+    if (cached && cached.length) { st.data[spec.key] = cached; st.dataOk = true; }
+  }
+  // restore a pending signal from history (app was closed)
+  const h = getHistory();
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].pair === p.name && !h[i].result) {
+      st.pending = { dir: h[i].dir, signalT: h[i].signalT, entryT: h[i].signalT + 60 };
+      st.lastSignalT = h[i].signalT;
+      break;
+    }
+  }
+}
+renderHistory();
+tick(true);
+setInterval(function() { tick(false); }, 15000);          // 1m refresh ~15s
+setInterval(function() { tick(true); }, 10 * 60 * 1000);  // HTF refresh rarely
+})();
+</script>
+</body>
+</html>
