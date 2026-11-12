@@ -647,6 +647,18 @@ const PAIRS = [
   { name: "GBP/AUD", symbol: "GBPAUD=X", trigger: "S5", triggerFa: "MACD" },
   { name: "USD/JPY", symbol: "USDJPY=X", trigger: "S1", triggerFa: "ترند EMA+RSI" },
 ];
+/* Plan B: a server-published snapshot is preferred when it is fresh.
+   The snapshot's biases/D/verdict are computed by final_robot.py on the
+   VM, so this path does not ask the in-page engine to reproduce them.
+   The existing Yahoo-via-proxy chain below remains the fallback. */
+const CONFIG = {
+  DATA_URL: "https://gist.githubusercontent.com/kunduzai2008/ef8ee0c68ac5d9ad91d78668b98a4d2c/raw/signals-data.json",
+  PLANB_MAX_AGE_SEC: 180,
+  PLANB_CLOCK_SKEW_SEC: 300,
+};
+const PLANB_SOURCE_LABEL = "سرور ساحل";
+let publishedSnapshot = null;
+let publishedAttemptDiag = "";
 const SPECS = [
   { key: "1m",  interval: "1m",  range: "7d"  },
   { key: "60m", interval: "60m", range: "3mo" },
@@ -677,6 +689,9 @@ for (const p of PAIRS) {
     verdict: null,       // latest next-candle verdict (presentation of evaluate)
     verdicts: loadJson(LS_VERD + p.name, []),  // verdict history strip
     dataOk: false,
+    published: null,     // this pair's record from signals-data.json
+    publishedActive: false,
+    publishedEvalT: -1,
   };
 }
 
@@ -790,6 +805,147 @@ async function fetchSeries(symbol, spec) {
   return null;
 }
 
+/* ---------- Plan B published snapshot (preferred data path) ---------- */
+function publishedCandles(rows) {
+  if (!Array.isArray(rows)) return null;
+  const out = [];
+  for (const row of rows) {
+    if (!Array.isArray(row) || row.length < 5) return null;
+    const c = { t: Number(row[0]), o: Number(row[1]), h: Number(row[2]),
+                l: Number(row[3]), c: Number(row[4]) };
+    if (![c.t, c.o, c.h, c.l, c.c].every(Number.isFinite)) return null;
+    out.push(c);
+  }
+  out.sort(function(a, b) { return a.t - b.t; });
+  return out.length >= 80 ? out : null;
+}
+function publishedEpoch(snap) {
+  if (!snap) return null;
+  if (Number.isFinite(Number(snap.generated_at_epoch))) return Number(snap.generated_at_epoch);
+  const parsed = Date.parse(snap.generated_at || "");
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : null;
+}
+function applyPublishedSnapshot(snap) {
+  const gen = publishedEpoch(snap);
+  if (!gen || !snap.pairs) return false;
+  const age = Math.floor(Date.now() / 1000) - gen;
+  if (age > CONFIG.PLANB_MAX_AGE_SEC || age < -CONFIG.PLANB_CLOCK_SKEW_SEC) {
+    publishedAttemptDiag = "دادهٔ سرور قدیمی است (" + age + " ثانیه)";
+    return false;
+  }
+  // Validate both pairs before changing any visible state.
+  const prepared = [];
+  for (const p of PAIRS) {
+    const pub = snap.pairs[p.name];
+    if (!pub || !pub.biases || !pub.verdict) return false;
+    const candles = publishedCandles(pub.candles);
+    if (!candles) return false;
+    prepared.push({ p: p, pub: pub, candles: candles });
+  }
+  for (const item of prepared) {
+    const st = state[item.p.name];
+    st.data["1m"] = item.candles;
+    st.published = item.pub;
+    st.publishedActive = true;
+    st.dataOk = true;
+    st.live1m = true;
+    st.src = PLANB_SOURCE_LABEL;
+  }
+  publishedSnapshot = snap;
+  publishedAttemptDiag = "";
+  return true;
+}
+async function refreshPublished() {
+  const sep = CONFIG.DATA_URL.indexOf("?") >= 0 ? "&" : "?";
+  const url = CONFIG.DATA_URL + sep + "v=" + Math.floor(Date.now() / 60000);
+  try {
+    const resp = await fetch(url, { cache: "no-store" });
+    if (!resp.ok) {
+      publishedAttemptDiag = "دادهٔ سرور: HTTP " + resp.status;
+      return false;
+    }
+    const snap = await resp.json();
+    return applyPublishedSnapshot(snap);
+  } catch (e) {
+    publishedAttemptDiag = "دادهٔ سرور در دسترس نیست — مسیر جایگزین (پروکسی) آزموده می‌شود";
+    return false;
+  }
+}
+function recordPublishedVerdict(p, pub) {
+  const st = state[p.name], v = pub.verdict || {};
+  const rec = {
+    pair: p.name,
+    signalT: pub.evaluation_candle_t,
+    candleT: pub.next_candle_t,
+    trade: !!v.trade,
+    dir: v.direction || 0,
+    reason: v.reason_fa || "",
+  };
+  st.verdict = rec;
+  st.verdicts = st.verdicts.filter(function(x) { return x.candleT !== rec.candleT; });
+  st.verdicts.push(rec);
+  st.verdicts = st.verdicts.slice(-100);
+  saveJson(LS_VERD + p.name, st.verdicts);
+  return rec;
+}
+function evaluatePublished(p, st) {
+  const pub = st.published;
+  if (!pub) return;
+  const m1 = st.data["1m"];
+  if (!m1 || !m1.length) return;
+  const spike = pub.spike || {};
+  const ev = {
+    biases: pub.biases,
+    score: Number(pub.score) || 0,
+    D: pub.D || 0,
+    rotation: !!(pub.rotation && pub.rotation.overall),
+    trigger: pub.trigger && pub.trigger.value !== null && pub.trigger.value !== undefined
+      ? pub.trigger.value : 0,
+    atr: spike.atr !== undefined ? spike.atr : null,
+    range: spike.range !== undefined ? spike.range : null,
+    spike: !!(spike.flag || pub.spike_flag),
+  };
+  st.eval = ev;
+  st.evalIdx = m1.findIndex(function(c) { return c.t === pub.evaluation_candle_t; });
+
+  // Settle a locally-shown server signal only once its entry candle is
+  // actually present and closed (or clearly missing/stale, which the
+  // existing settle() marks as a data gap).
+  if (st.pending) {
+    const entry = m1.find(function(c) { return c.t === st.pending.entryT; });
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (!entry || entry.t + 60 <= nowSec) settle(p, st);
+  }
+
+  if (st.publishedEvalT !== pub.evaluation_candle_t) {
+    st.publishedEvalT = pub.evaluation_candle_t;
+    st.lastClosedT = pub.evaluation_candle_t;
+    recordPublishedVerdict(p, pub);
+    const v = pub.verdict || {};
+    const remain = pub.next_candle_t + 60 - Math.floor(Date.now() / 1000);
+    if (v.trade && !st.pending && st.lastSignalT !== pub.evaluation_candle_t && remain >= 20) {
+      st.lastSignalT = pub.evaluation_candle_t;
+      const dir = v.direction;
+      st.pending = { dir: dir, signalT: pub.evaluation_candle_t, entryT: pub.next_candle_t };
+      const h = getHistory();
+      h.push({
+        pair: p.name, dir: dir, signalT: pub.evaluation_candle_t,
+        day: kabulDay(pub.evaluation_candle_t),
+        kabul: fmtKabul.format(new Date(pub.next_candle_t * 1000)),
+        reason: v.reason_fa || "همهٔ لایه‌ها پاس شد",
+        result: null,
+      });
+      setHistory(h); renderHistory();
+      showBanner(dir === 1 ? "buy" : "sell",
+        (dir === 1 ? "🟢 خرید BUY ⬆️ " : "🔴 فروش SELL ⬇️ ") + p.name,
+        "۱ دقیقه · ساعت کابل " + fmtKabul.format(new Date(pub.next_candle_t * 1000)) +
+        " · " + PLANB_SOURCE_LABEL);
+      beep(); buzz();
+    }
+  }
+  renderPair(p);
+}
+
 /* ---------- helpers ---------- */
 const fmtKabul = new Intl.DateTimeFormat("fa-AF", { timeZone: "Asia/Kabul", hour: "2-digit", minute: "2-digit", hour12: false });
 const fmtKabulFull = new Intl.DateTimeFormat("fa-AF", { timeZone: "Asia/Kabul", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -896,13 +1052,24 @@ function renderPair(p) {
     rot += ev.rotation ? ' <span class="ok">کامل شد ✓</span>' : ' <span class="wait">هنوز کامل نیست</span>';
   }
   el.querySelector(".js-rot").innerHTML = rot;
-  const trigTxt = ev.trigger === 0 ? "— (سیگنال نیست)" : (ev.trigger === 1 ? "⬆️ فعال شد" : "⬇️ فعال شد");
+  let trigTxt = ev.trigger === 0 ? "— (سیگنال نیست)" : (ev.trigger === 1 ? "⬆️ فعال شد" : "⬇️ فعال شد");
+  if (st.publishedActive && st.published && st.published.trigger &&
+      st.published.trigger.state === "not_reached") {
+    trigTxt = "— (هنوز به لایهٔ تریگر نرسیده)";
+  }
   el.querySelector(".js-trig").innerHTML = "تریگر (" + p.triggerFa + "): <b>" + trigTxt + "</b>";
   el.querySelector(".js-verdict").innerHTML = verdictText(p, ev);
   renderVerdict(p);
   drawChart(p);
 }
 function verdictText(p, ev) {
+  const pubState = state[p.name];
+  if (pubState.publishedActive && pubState.published && pubState.published.verdict) {
+    const v = pubState.published.verdict;
+    if (v.trade) return "✅ <b>همهٔ لایه‌ها پاس شد</b> — حکم سرور برای کندل بعدی: " +
+      (v.direction === 1 ? "خرید ⬆️" : "فروش ⬇️") + ".";
+    return "فیصله: <b>صبر</b> — " + (v.reason_fa || "حکم سرور: ترید نگیر") + ".";
+  }
   if (ev.D === 0) return "فیصله: <b>صبر</b> — جهت سیشن خنثی است؛ طرفی برای ترید نیست.";
   if (!ev.rotation) return "فیصله: <b>صبر</b> — چرخش تایم‌های کوچک به‌سوی جهت سیشن کامل نشده است.";
   if (ev.trigger === 0) return "فیصله: <b>صبر</b> — چرخش کامل است اما تریگر " + p.triggerFa + " هنوز فعال نشده.";
@@ -1261,6 +1428,7 @@ function settle(p, st) {
 }
 
 function evaluate(p, st) {
+  if (st.publishedActive && st.published) { evaluatePublished(p, st); return; }
   const m1 = st.data["1m"];
   if (!m1 || m1.length < 80) return;
   const nowSec = Math.floor(Date.now() / 1000);
@@ -1380,6 +1548,16 @@ async function refreshPair(p, withHtf) {
 }
 
 function setStatus() {
+  const diagEl0 = document.getElementById("diagLine");
+  if (publishedSnapshot && PAIRS.every((p) => state[p.name].publishedActive)) {
+    document.getElementById("srcName").textContent = PLANB_SOURCE_LABEL;
+    document.getElementById("lastUpd").textContent =
+      fmtKabulFull.format(new Date(publishedEpoch(publishedSnapshot) * 1000));
+    document.getElementById("statusMsg").textContent =
+      "زمان دادهٔ سرور: " + (publishedSnapshot.generated_at_kabul || publishedSnapshot.generated_at || "");
+    if (diagEl0) diagEl0.textContent = "";
+    return;
+  }
   const srcs = PAIRS.map((p) => state[p.name].src).filter(Boolean);
   document.getElementById("srcName").textContent = srcs.length ? srcs[0] : "—";
   document.getElementById("lastUpd").textContent = fmtKabulFull.format(new Date());
@@ -1392,10 +1570,17 @@ function setStatus() {
   // line tells us exactly which route the user's network blocked, and how.
   const diagEl = document.getElementById("diagLine");
   const allLive = PAIRS.every(function(p) { return state[p.name].live1m; });
-  if (diagEl) diagEl.textContent = allLive ? "" : lastAttemptDiag;
+  if (diagEl) diagEl.textContent = allLive ? "" :
+    [publishedAttemptDiag, lastAttemptDiag].filter(Boolean).join(" · ");
 }
 
 async function tick(full) {
+  if (await refreshPublished()) {
+    setStatus();
+    for (const p of PAIRS) { evaluate(p, state[p.name]); renderPair(p); }
+    return;
+  }
+  for (const p of PAIRS) state[p.name].publishedActive = false;
   for (const p of PAIRS) { await refreshPair(p, full); }
   setStatus();
   for (const p of PAIRS) { evaluate(p, state[p.name]); renderPair(p); }
