@@ -51,7 +51,22 @@
   .chart-note{color:var(--dim); font-size:12.5px; padding:0 10px 6px}
   .chart-meta{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; color:var(--dim); font-size:13px; padding:0 10px 8px; direction:rtl}
   .chart-meta b{color:var(--txt); direction:ltr; font-variant-numeric:tabular-nums}
-  .chart-canvas{display:block; width:100%; height:260px; background:#ffffff}
+  .chart-canvas{display:block; width:100%; height:320px; background:#ffffff; cursor:pointer}
+  .pairs.focus{grid-template-columns:1fr}
+  .head-end{display:flex; align-items:center; gap:8px}
+  .expand-btn{appearance:none; border:1px solid var(--line); background:var(--chip); color:var(--txt); border-radius:999px; padding:4px 12px; font:inherit; font-size:14px; cursor:pointer; white-space:nowrap}
+  .card .strip{display:none}
+  .card.collapsed{padding:0; background:transparent; border:none}
+  .card.collapsed > *:not(.strip){display:none}
+  .card.collapsed .strip{display:flex; align-items:center; gap:12px; width:100%; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px 14px; color:var(--txt); font:inherit; cursor:pointer; text-align:start}
+  .strip .s-name{font-weight:bold; direction:ltr; font-size:19px}
+  .strip .s-price{direction:ltr; font-variant-numeric:tabular-nums; color:var(--dim)}
+  .strip .s-price b{color:var(--txt)}
+  .strip .s-verdict{margin-inline-start:auto; border:1px solid var(--line); background:var(--chip); border-radius:999px; padding:3px 12px; font-size:14.5px; white-space:nowrap}
+  .strip .s-verdict.buy{border-color:var(--green)}
+  .strip .s-verdict.sell{border-color:var(--red)}
+  .strip .s-hint{color:var(--dim); font-size:13px; white-space:nowrap}
+  .card.focused .chart-canvas{height:70vh; min-height:400px}
   .chip.selected{outline:2px solid var(--blue); outline-offset:1px}
   .next-verdict{margin-top:12px; border:2px solid var(--line); border-radius:14px; padding:12px 14px; background:var(--card2)}
   .next-verdict.buy{border-color:var(--green); background:rgba(34,197,94,.12)}
@@ -676,6 +691,7 @@ let audioCtx = null, soundOn = false;
 
 for (const p of PAIRS) {
   state[p.name] = {
+    pairName: p.name,
     data: {},            // specKey -> candles
     src: null,           // last good source label
     pairCtx: null, ctxM1Len: -1,
@@ -946,6 +962,68 @@ function evaluatePublished(p, st) {
   renderPair(p);
 }
 
+/* ---------- live forming-candle overlay (display only) ----------
+   live.json is published by the VM every ~15 s from real Yahoo prices
+   (the same source as the snapshot). It may move ONLY the forming
+   candle's o/h/l/c — and with it the price display and the chart's
+   last-price line. Evaluations, verdicts, biases and history still
+   come exclusively from the minute snapshot (or the in-page engine on
+   closed candles); live ticks are never fed into the engine. A stale
+   (>60 s) or missing live.json is ignored silently — snapshot-only
+   behaviour is the fallback, with no error state. */
+const LIVE_URL = CONFIG.DATA_URL.replace("signals-data.json", "live.json");
+function applyLiveTick(live) {
+  if (!live || !live.pairs) return;
+  const gen = Number(live.generated_at_epoch);
+  if (!Number.isFinite(gen)) return;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (nowSec - gen > 60 || gen - nowSec > 30) return; // stale: snapshot-only
+  for (const p of PAIRS) {
+    const rec = live.pairs[p.name];
+    if (!rec) continue;
+    const st = state[p.name];
+    const m1 = st.data["1m"];
+    if (!m1 || !m1.length) continue;
+    const t = Number(rec.t), o = Number(rec.o), h = Number(rec.h),
+          l = Number(rec.l), c = Number(rec.c);
+    if (![t, o, h, l, c].every(Number.isFinite)) continue;
+    const last = m1[m1.length - 1];
+    // Yahoo's series may end with its unaligned "live tick" row for the
+    // current minute — match by minute, not by exact timestamp, and let
+    // the accumulated live candle replace that row.
+    const lastMinute = Math.floor(last.t / 60) * 60;
+    let changed = false;
+    if (lastMinute === t) {
+      if (last.t !== t || last.o !== o || last.h !== h || last.l !== l || last.c !== c) {
+        m1[m1.length - 1] = { t: t, o: o, h: h, l: l, c: c };
+        changed = true;
+      }
+    } else if (t === lastMinute + 60 && t + 60 > nowSec) {
+      // A new minute has started since the snapshot was built: append
+      // its forming candle so the chart rolls over on time.
+      m1.push({ t: t, o: o, h: h, l: l, c: c });
+      changed = true;
+    }
+    if (changed) {
+      const el = cardEls[p.name];
+      if (el) {
+        const priceEl = el.querySelector(".js-price");
+        if (priceEl) priceEl.textContent = digits(c, p.name === "USD/JPY" ? 3 : 5);
+      }
+      renderStrip(p);
+      drawChart(p);
+    }
+  }
+}
+async function refreshLive() {
+  try {
+    const url = LIVE_URL + "?v=" + Math.floor(Date.now() / 5000);
+    const resp = await fetch(url, { cache: "no-store" });
+    if (!resp.ok) return;
+    applyLiveTick(await resp.json());
+  } catch (e) { /* silent: snapshot-only fallback */ }
+}
+
 /* ---------- helpers ---------- */
 const fmtKabul = new Intl.DateTimeFormat("fa-AF", { timeZone: "Asia/Kabul", hour: "2-digit", minute: "2-digit", hour12: false });
 const fmtKabulFull = new Intl.DateTimeFormat("fa-AF", { timeZone: "Asia/Kabul", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
@@ -979,8 +1057,15 @@ function buildCards() {
     div.className = "card";
     div.id = "card_" + p.name;
     div.innerHTML =
+      '<button type="button" class="strip js-strip" aria-label="بزرگ‌کردن چارت ' + p.name + '">' +
+        '<span class="s-name">' + p.name + '</span>' +
+        '<span class="s-price">قیمت: <b class="js-strip-price">—</b></span>' +
+        '<span class="s-verdict js-strip-verdict">—</span>' +
+        '<span class="s-hint">برای بزرگ‌کردن بزنید ⛶</span>' +
+      '</button>' +
       '<div class="card-head"><span class="pair-name">' + p.name + '</span>' +
-      '<span class="price">قیمت: <b class="js-price">—</b></span></div>' +
+      '<span class="head-end"><span class="price">قیمت: <b class="js-price">—</b></span>' +
+      '<button type="button" class="expand-btn js-expand" aria-label="بزرگ‌کردن چارت">⛶</button></span></div>' +
       '<div><span class="dbadge flat js-d">جهت سیشن: —</span> <span class="score js-score"></span></div>' +
       '<div class="next-verdict wait js-next-verdict">' +
         '<div class="nv-kicker">🎯 تشخیص کندل بعدی</div>' +
@@ -1015,7 +1100,54 @@ function buildCards() {
         drawChart(p);
       });
     });
+    div.querySelector(".js-expand").addEventListener("click", function() {
+      setFocus(focusPair === p.name ? null : p.name);
+    });
+    div.querySelector(".js-strip").addEventListener("click", function() {
+      setFocus(p.name);
+    });
+    div.querySelector(".js-chart").addEventListener("click", function() {
+      if (focusPair !== p.name) setFocus(p.name);
+    });
   }
+}
+
+/* ---------- focus mode: one chart big, the other a slim strip ---------- */
+let focusPair = null;   // null = both charts; otherwise the focused pair name
+function renderStrip(p) {
+  const st = state[p.name], el = cardEls[p.name];
+  if (!el) return;
+  const m1 = st.data["1m"];
+  const priceEl = el.querySelector(".js-strip-price");
+  if (priceEl && m1 && m1.length) {
+    priceEl.textContent = digits(m1[m1.length - 1].c, p.name === "USD/JPY" ? 3 : 5);
+  }
+  const vEl = el.querySelector(".js-strip-verdict");
+  if (!vEl) return;
+  const v = st.verdict;
+  const nowSec = Math.floor(Date.now() / 1000);
+  let txt = "—", extra = "";
+  if (v && nowSec < v.candleT + 60) {
+    if (v.trade) { txt = v.dir === 1 ? "🟢 خرید" : "🔴 فروش"; extra = v.dir === 1 ? " buy" : " sell"; }
+    else txt = "⚪ ترید نگیر";
+  } else if (st.eval) {
+    txt = st.eval.D === 1 ? "جهت: صعودی ▲" : (st.eval.D === -1 ? "جهت: نزولی ▼" : "جهت: خنثی ●");
+  }
+  vEl.textContent = txt;
+  vEl.className = "s-verdict js-strip-verdict" + extra;
+}
+function setFocus(name) {
+  focusPair = name;
+  pairsEl.classList.toggle("focus", !!name);
+  for (const p of PAIRS) {
+    const el = cardEls[p.name];
+    el.classList.toggle("focused", name === p.name);
+    el.classList.toggle("collapsed", !!name && name !== p.name);
+    const btn = el.querySelector(".js-expand");
+    if (btn) btn.textContent = name === p.name ? "⛶ هر دو چارت" : "⛶";
+    renderStrip(p);
+  }
+  requestAnimationFrame(function() { drawAllCharts(); });
 }
 function chipsHtml(tfs, biases, selectedTf) {
   return tfs.map(function(tf) {
@@ -1031,7 +1163,7 @@ function renderPair(p) {
   if (m1 && m1.length) priceEl.textContent = digits(m1[m1.length - 1].c, p.name === "USD/JPY" ? 3 : 5);
   const dEl = el.querySelector(".js-d");
   const scEl = el.querySelector(".js-score");
-  if (!ev) { el.querySelector(".js-verdict").textContent = st.dataOk ? "در حال محاسبه…" : "داده در دسترس نیست"; renderVerdict(p); drawChart(p); return; }
+  if (!ev) { el.querySelector(".js-verdict").textContent = st.dataOk ? "در حال محاسبه…" : "داده در دسترس نیست"; renderVerdict(p); renderStrip(p); drawChart(p); return; }
   const b = ev.biases;
   dEl.className = "dbadge js-d " + (ev.D === 1 ? "up" : (ev.D === -1 ? "down" : "flat"));
   dEl.textContent = "جهت سیشن: " + wordD(ev.D);
@@ -1060,6 +1192,7 @@ function renderPair(p) {
   el.querySelector(".js-trig").innerHTML = "تریگر (" + p.triggerFa + "): <b>" + trigTxt + "</b>";
   el.querySelector(".js-verdict").innerHTML = verdictText(p, ev);
   renderVerdict(p);
+  renderStrip(p);
   drawChart(p);
 }
 function verdictText(p, ev) {
@@ -1151,6 +1284,10 @@ function refreshVerdictBoxes() { for (const p of PAIRS) renderVerdict(p); }
 
 /* ---------- candlestick chart (display only) ---------- */
 const CHART_TF_LABELS = { 1: "۱ دقیقه", 3: "۳ دقیقه", 5: "۵ دقیقه", 15: "۱۵ دقیقه" };
+/* Visible candle counts: fewer candles = wider, readable bodies. Focus
+   mode shows more history because the chart is much wider there. */
+const CHART_N_BOTH = { 1: 60, 3: 54, 5: 48, 15: 42 };
+const CHART_N_FOCUS = { 1: 90, 3: 80, 5: 70, 15: 60 };
 function chartSeries(st) {
   const m1 = st.data["1m"];
   if (!m1 || !m1.length) return [];
@@ -1166,7 +1303,9 @@ function chartSeries(st) {
   if (last.t < currentStart && currentStart <= last.t + period) {
     all.push({ t: currentStart, o: last.c, h: last.c, l: last.c, c: last.c });
   }
-  return all.slice(-120);
+  const focused = !!focusPair && st.pairName === focusPair;
+  const n = (focused ? CHART_N_FOCUS : CHART_N_BOTH)[tf] || 60;
+  return all.slice(-n);
 }
 function chartCountdown(tf) {
   const period = tf * 60;
@@ -1198,7 +1337,7 @@ function drawChart(p) {
   if (countEl) countEl.textContent = chartCountdown(tf);
 
   const width = canvas.clientWidth;
-  const height = canvas.clientHeight || 260;
+  const height = canvas.clientHeight || 320;
   if (!width) return;
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const bw = Math.round(width * dpr), bh = Math.round(height * dpr);
@@ -1276,7 +1415,7 @@ function drawChart(p) {
     if (candles[i].t <= nowSec && nowSec < candles[i].t + period) { liveIdx = i; break; }
   }
   if (liveIdx < 0 && candles.length) liveIdx = candles.length - 1;
-  const bodyW = Math.max(2, Math.min(11, step * 0.62));
+  const bodyW = Math.max(2, Math.min(focusPair === p.name ? 18 : 13, step * 0.62));
 
   // Candles and wicks.
   for (let i = 0; i < candles.length; i++) {
@@ -1626,6 +1765,8 @@ drawAllCharts();
 tick(true);
 setInterval(function() { tick(false); }, 15000);          // 1m refresh ~15s
 setInterval(function() { tick(true); }, 10 * 60 * 1000);  // HTF refresh rarely
+setInterval(refreshLive, 5000);                           // live forming candle ~5s
+refreshLive();
 })();
 </script>
 </body>
