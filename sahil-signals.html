@@ -41,6 +41,30 @@
   .pair-name{font-size:24px; font-weight:bold; direction:ltr}
   .price{direction:ltr; font-variant-numeric:tabular-nums; color:var(--dim); font-size:18px}
   .price b{color:var(--txt)}
+  .chartbox{margin-top:12px; border:1px solid var(--line); border-radius:12px; background:#0d1319; overflow:hidden}
+  .tf-switch{display:flex; gap:6px; flex-wrap:wrap; align-items:center; padding:9px 9px 4px}
+  .tf-switch .tf-title{color:var(--dim); font-size:13.5px; margin-inline-end:auto}
+  .tf-btn{appearance:none; border:1px solid var(--line); background:var(--chip); color:var(--dim); border-radius:999px; padding:5px 11px; font:inherit; font-size:14px; cursor:pointer}
+  .tf-btn.active{background:rgba(56,189,248,.16); border-color:var(--blue); color:var(--txt); font-weight:bold}
+  .chart-note{color:var(--dim); font-size:12.5px; padding:0 10px 6px}
+  .chart-meta{display:flex; justify-content:space-between; gap:8px; flex-wrap:wrap; color:var(--dim); font-size:13px; padding:0 10px 8px; direction:rtl}
+  .chart-meta b{color:var(--txt); direction:ltr; font-variant-numeric:tabular-nums}
+  .chart-canvas{display:block; width:100%; height:260px; background:#0d1319}
+  .chip.selected{outline:2px solid var(--blue); outline-offset:1px}
+  .next-verdict{margin-top:12px; border:2px solid var(--line); border-radius:14px; padding:12px 14px; background:var(--card2)}
+  .next-verdict.buy{border-color:var(--green); background:rgba(34,197,94,.12)}
+  .next-verdict.sell{border-color:var(--red); background:rgba(239,68,68,.12)}
+  .next-verdict.wait{border-color:var(--line); background:rgba(157,176,195,.07)}
+  .next-verdict.expired{opacity:.55; filter:grayscale(.6)}
+  .nv-kicker{color:var(--dim); font-size:13px}
+  .nv-main{font-size:23px; font-weight:bold; line-height:1.35}
+  .nv-reason{font-size:16px; margin-top:2px}
+  .nv-meta{display:flex; flex-wrap:wrap; gap:6px 18px; color:var(--dim); font-size:14px; margin-top:4px}
+  .nv-meta b{color:var(--txt)}
+  .nv-strip{display:flex; flex-wrap:wrap; gap:5px; margin-top:8px}
+  .nv-chip{border:1px solid var(--line); background:var(--chip); border-radius:999px; padding:2px 9px; font-size:13px; font-variant-numeric:tabular-nums}
+  .nv-chip.up{border-color:var(--green)} .nv-chip.down{border-color:var(--red)} .nv-chip.flat{color:var(--dim)}
+  .nv-strip-empty{color:var(--dim); font-size:13px}
   .dbadge{display:inline-block; border-radius:999px; padding:4px 14px; font-weight:bold; font-size:17px; margin:10px 0 4px}
   .dbadge.up{background:rgba(34,197,94,.15); color:var(--green); border:1px solid var(--green)}
   .dbadge.down{background:rgba(239,68,68,.15); color:var(--red); border:1px solid var(--red)}
@@ -629,6 +653,7 @@ const SPECS = [
 ];
 const LS_CACHE = "ss1_cache_";
 const LS_HIST = "ss1_history";
+const LS_VERD = "ss1_verdicts_";
 const LS_HTF = "ss1_htf_";
 const state = {};   // per pair runtime state
 let audioCtx = null, soundOn = false;
@@ -644,6 +669,9 @@ for (const p of PAIRS) {
     pending: null,       // {dir, signalT, entryT}
     lastSignalT: -1,
     htfStored: loadJson(LS_HTF + p.name, {}),  // tf -> {bias, end}
+    chartTF: 1,          // display only: 1, 3, 5 or 15 minutes
+    verdict: null,       // latest next-candle verdict (presentation of evaluate)
+    verdicts: loadJson(LS_VERD + p.name, []),  // verdict history strip
     dataOk: false,
   };
 }
@@ -730,6 +758,25 @@ function buildCards() {
       '<div class="card-head"><span class="pair-name">' + p.name + '</span>' +
       '<span class="price">قیمت: <b class="js-price">—</b></span></div>' +
       '<div><span class="dbadge flat js-d">جهت سیشن: —</span> <span class="score js-score"></span></div>' +
+      '<div class="next-verdict wait js-next-verdict">' +
+        '<div class="nv-kicker">🎯 تشخیص کندل بعدی</div>' +
+        '<div class="nv-main js-nv-main">⚪ در حال تشخیص کندل بعدی…</div>' +
+        '<div class="nv-reason js-nv-reason"></div>' +
+        '<div class="nv-meta"><span class="js-nv-for"></span><span class="js-nv-count"></span></div>' +
+      '</div>' +
+      '<div class="nv-strip js-nv-strip"><span class="nv-strip-empty">تشخیص‌های قبلی: —</span></div>' +
+      '<div class="chartbox">' +
+        '<div class="tf-switch" role="group" aria-label="تایم‌فریم نمودار">' +
+          '<span class="tf-title">نمودار کندل</span>' +
+          '<button type="button" class="tf-btn active" data-tf="1">۱ دقیقه</button>' +
+          '<button type="button" class="tf-btn" data-tf="3">۳ دقیقه</button>' +
+          '<button type="button" class="tf-btn" data-tf="5">۵ دقیقه</button>' +
+          '<button type="button" class="tf-btn" data-tf="15">۱۵ دقیقه</button>' +
+        '</div>' +
+        '<div class="chart-note">سیگنال روی ۱ دقیقه است؛ این‌جا فقط برای دیدن چرخش روند است</div>' +
+        '<canvas class="chart-canvas js-chart" role="img" aria-label="نمودار کندل ' + p.name + '"></canvas>' +
+        '<div class="chart-meta"><span>تایم نمودار: <b class="js-chart-tf">۱ دقیقه</b></span><span>پایان این کندل: <b class="js-chart-count">--:--</b></span><span class="js-chart-live">● زنده</span></div>' +
+      '</div>' +
       '<div class="tf-group"><div class="glabel">تایم‌های بالا — یک بار بررسی ✓ (ماهانه تا H1)</div><div class="chips js-htf"></div></div>' +
       '<div class="tf-group"><div class="glabel">تایم‌های پایین — تازه (M15 تا M1)</div><div class="chips js-ltf"></div></div>' +
       '<div class="rot js-rot"></div>' +
@@ -737,12 +784,19 @@ function buildCards() {
       '<div class="verdict js-verdict">در حال بارگذاری داده…</div>';
     pairsEl.appendChild(div);
     cardEls[p.name] = div;
+    div.querySelectorAll(".tf-btn").forEach(function(btn) {
+      btn.addEventListener("click", function() {
+        state[p.name].chartTF = Number(btn.getAttribute("data-tf"));
+        div.querySelectorAll(".tf-btn").forEach(function(x) { x.classList.toggle("active", x === btn); });
+        drawChart(p);
+      });
+    });
   }
 }
-function chipsHtml(tfs, biases) {
+function chipsHtml(tfs, biases, selectedTf) {
   return tfs.map(function(tf) {
     const v = biases[tf];
-    return '<span class="chip ' + cls(v) + '"><span class="tf">' + tf + '</span><span class="arw">' + arw(v) + '</span></span>';
+    return '<span class="chip ' + cls(v) + (tf === selectedTf ? " selected" : "") + '"><span class="tf">' + tf + '</span><span class="arw">' + arw(v) + '</span></span>';
   }).join("");
 }
 function renderPair(p) {
@@ -753,13 +807,14 @@ function renderPair(p) {
   if (m1 && m1.length) priceEl.textContent = digits(m1[m1.length - 1].c, p.name === "USD/JPY" ? 3 : 5);
   const dEl = el.querySelector(".js-d");
   const scEl = el.querySelector(".js-score");
-  if (!ev) { el.querySelector(".js-verdict").textContent = st.dataOk ? "در حال محاسبه…" : "داده در دسترس نیست"; return; }
+  if (!ev) { el.querySelector(".js-verdict").textContent = st.dataOk ? "در حال محاسبه…" : "داده در دسترس نیست"; renderVerdict(p); drawChart(p); return; }
   const b = ev.biases;
   dEl.className = "dbadge js-d " + (ev.D === 1 ? "up" : (ev.D === -1 ? "down" : "flat"));
   dEl.textContent = "جهت سیشن: " + wordD(ev.D);
   scEl.textContent = "score " + (ev.score >= 0 ? "+" : "") + ev.score.toFixed(3);
-  el.querySelector(".js-htf").innerHTML = chipsHtml(["Monthly", "Weekly", "Daily", "H4", "H1"], b);
-  el.querySelector(".js-ltf").innerHTML = chipsHtml(["M15", "M5", "M3", "M1"], b);
+  const selectedTf = ({ 1: "M1", 3: "M3", 5: "M5", 15: "M15" })[st.chartTF] || "M1";
+  el.querySelector(".js-htf").innerHTML = chipsHtml(["Monthly", "Weekly", "Daily", "H4", "H1"], b, selectedTf);
+  el.querySelector(".js-ltf").innerHTML = chipsHtml(["M15", "M5", "M3", "M1"], b, selectedTf);
   const rotItem = function(tf, ok, mark) {
     return '<span class="item">' + tf + ' <span class="' + (ok ? "ok" : "no") + '">' + mark + '</span></span>';
   };
@@ -776,6 +831,8 @@ function renderPair(p) {
   const trigTxt = ev.trigger === 0 ? "— (سیگنال نیست)" : (ev.trigger === 1 ? "⬆️ فعال شد" : "⬇️ فعال شد");
   el.querySelector(".js-trig").innerHTML = "تریگر (" + p.triggerFa + "): <b>" + trigTxt + "</b>";
   el.querySelector(".js-verdict").innerHTML = verdictText(p, ev);
+  renderVerdict(p);
+  drawChart(p);
 }
 function verdictText(p, ev) {
   if (ev.D === 0) return "فیصله: <b>صبر</b> — جهت سیشن خنثی است؛ طرفی برای ترید نیست.";
@@ -785,6 +842,264 @@ function verdictText(p, ev) {
   if (ev.spike) return "⚠️ <b>سیگنال رد شد — اسپایک:</b> کندل بیش از حد بزرگ بود (خبر/جهش)؛ ترید نمی‌شود.";
   return "✅ <b>همهٔ لایه‌ها پاس شد</b> — آخرین سیگنال همین جفت را در تاریخچه ببینید.";
 }
+
+/* ---------- next-candle verdict (presentation of the same evaluation) ---------- */
+function faDigits(s) { return String(s).replace(/[0-9]/g, function(d) { return "۰۱۲۳۴۵۶۷۸۹"[Number(d)]; }); }
+function firstBlockReason(ev, signalFired) {
+  if (ev.D === 0) return { trade: false, dir: 0, reason: "جهت سیشن خنثی است" };
+  if (!ev.rotation) return { trade: false, dir: 0, reason: "چرخش کامل نیست — M1/M3/M5 هنوز هم‌جهت نشده‌اند" };
+  if (ev.trigger === 0) return { trade: false, dir: 0, reason: "همه‌چیز آماده است، تریگر هنوز نیامده" };
+  if (ev.trigger !== ev.D) return { trade: false, dir: 0, reason: "تریگر خلاف جهت سیشن است" };
+  if (ev.spike) return { trade: false, dir: 0, reason: "کندل قبلی اسپایک بود — خطرناک" };
+  if (!signalFired) return { trade: false, dir: 0, reason: "سیگنال قبلی هنوز تسویه نشده است" };
+  return { trade: true, dir: ev.D, reason: "همهٔ لایه‌ها پاس شد" };
+}
+function recordVerdict(p, candleT, ev, signalFired) {
+  const st = state[p.name];
+  const r = firstBlockReason(ev, signalFired);
+  const rec = { pair: p.name, signalT: candleT, candleT: candleT + 60, trade: r.trade, dir: r.dir, reason: r.reason };
+  st.verdict = rec;
+  st.verdicts = st.verdicts.filter(function(x) { return x.candleT !== rec.candleT; });
+  st.verdicts.push(rec);
+  st.verdicts = st.verdicts.slice(-100);
+  saveJson(LS_VERD + p.name, st.verdicts);
+}
+function verdictResultFor(p, rec) {
+  if (!rec.trade) return null;
+  const h = getHistory();
+  for (let i = h.length - 1; i >= 0; i--) {
+    if (h[i].pair === p.name && h[i].signalT === rec.signalT) return h[i].result;
+  }
+  return null;
+}
+function renderVerdict(p) {
+  const st = state[p.name], el = cardEls[p.name];
+  if (!el) return;
+  const box = el.querySelector(".js-next-verdict");
+  if (!box) return;
+  const strip = el.querySelector(".js-nv-strip");
+  if (strip) {
+    const items = st.verdicts.slice(-10);
+    strip.innerHTML = items.length ? items.map(function(rec) {
+      const icon = rec.trade ? (rec.dir === 1 ? "🟢" : "🔴") : "⚪";
+      const res = verdictResultFor(p, rec);
+      const mark = res === "win" ? " ✅" : (res === "loss" ? " ❌" : (res === "push" ? " ➖" : ""));
+      const kls = rec.trade ? (rec.dir === 1 ? "up" : "down") : "flat";
+      return '<span class="nv-chip ' + kls + '" title="' + (rec.reason || "") + '">' + icon + " " + fmtKabul.format(new Date(rec.candleT * 1000)) + mark + "</span>";
+    }).join("") : '<span class="nv-strip-empty">تشخیص‌های قبلی: —</span>';
+  }
+  const main = box.querySelector(".js-nv-main");
+  const reasonEl = box.querySelector(".js-nv-reason");
+  const forEl = box.querySelector(".js-nv-for");
+  const countEl = box.querySelector(".js-nv-count");
+  const v = st.verdict;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (!v || nowSec >= v.candleT + 60) {
+    box.className = "next-verdict wait expired js-next-verdict";
+    main.textContent = "⚪ در حال تشخیص کندل بعدی…";
+    reasonEl.textContent = ""; forEl.textContent = ""; countEl.textContent = "";
+    return;
+  }
+  box.className = "next-verdict js-next-verdict " + (v.trade ? (v.dir === 1 ? "buy" : "sell") : "wait");
+  if (v.trade) {
+    main.textContent = v.dir === 1 ? "🟢 کندل بعدی: ترید بگیر ⬆️ خرید" : "🔴 کندل بعدی: ترید بگیر ⬇️ فروش";
+    reasonEl.textContent = v.reason;
+  } else {
+    main.textContent = "⚪ کندل بعدی: ترید نگیر ⏸";
+    reasonEl.textContent = v.reason;
+  }
+  forEl.innerHTML = "برای کندل ساعت <b>" + fmtKabul.format(new Date(v.candleT * 1000)) + "</b> کابل";
+  const remain = v.candleT + 60 - nowSec;
+  countEl.innerHTML = "اعتبار این تشخیص: <b>" + faDigits(Math.floor(remain / 60)) + ":" + faDigits(String(remain % 60).padStart(2, "0")) + "</b> مانده";
+}
+function refreshVerdictBoxes() { for (const p of PAIRS) renderVerdict(p); }
+
+/* ---------- candlestick chart (display only) ---------- */
+const CHART_TF_LABELS = { 1: "۱ دقیقه", 3: "۳ دقیقه", 5: "۵ دقیقه", 15: "۱۵ دقیقه" };
+function chartSeries(st) {
+  const m1 = st.data["1m"];
+  if (!m1 || !m1.length) return [];
+  const tf = st.chartTF || 1;
+  const all = tf === 1 ? m1.slice() : resample(m1, tf);
+  if (!all.length) return [];
+  const period = tf * 60;
+  const nowSec = Math.floor(Date.now() / 1000);
+  const currentStart = Math.floor(nowSec / period) * period;
+  const last = all[all.length - 1];
+  // If a refresh lands just after a bucket boundary, seed the new forming
+  // bucket from the latest known close until the next data refresh arrives.
+  if (last.t < currentStart && currentStart <= last.t + period) {
+    all.push({ t: currentStart, o: last.c, h: last.c, l: last.c, c: last.c });
+  }
+  return all.slice(-120);
+}
+function chartCountdown(tf) {
+  const period = tf * 60;
+  const remain = period - (Math.floor(Date.now() / 1000) % period);
+  const mm = String(Math.floor(remain / 60)).padStart(2, "0");
+  const ss = String(remain % 60).padStart(2, "0");
+  return mm + ":" + ss;
+}
+function roundedRectPath(ctx, x, y, w, h, r) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y); ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr); ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h); ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr); ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
+}
+function drawChart(p) {
+  const st = state[p.name], el = cardEls[p.name];
+  if (!el) return;
+  const canvas = el.querySelector(".js-chart");
+  if (!canvas) return;
+  const tf = st.chartTF || 1;
+  const tfEl = el.querySelector(".js-chart-tf");
+  const countEl = el.querySelector(".js-chart-count");
+  const liveEl = el.querySelector(".js-chart-live");
+  if (tfEl) tfEl.textContent = CHART_TF_LABELS[tf];
+  if (countEl) countEl.textContent = chartCountdown(tf);
+
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight || 260;
+  if (!width) return;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const bw = Math.round(width * dpr), bh = Math.round(height * dpr);
+  if (canvas.width !== bw || canvas.height !== bh) { canvas.width = bw; canvas.height = bh; }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  const D = st.eval ? st.eval.D : 0;
+  ctx.fillStyle = D === 1 ? "rgba(34,197,94,0.060)" : (D === -1 ? "rgba(239,68,68,0.060)" : "rgba(157,176,195,0.045)");
+  ctx.fillRect(0, 0, width, height);
+
+  const axisW = 64, left = 7, right = width - axisW, top = 17, bottom = height - 30;
+  const plotW = right - left, plotH = bottom - top;
+  const candles = chartSeries(st);
+  const dec = p.name === "USD/JPY" ? 3 : 5;
+  if (!candles.length) {
+    if (liveEl) { liveEl.textContent = "در انتظار داده"; liveEl.style.color = "var(--amber)"; }
+    ctx.fillStyle = "#9db0c3"; ctx.font = "15px Tahoma"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    ctx.fillText("داده برای نمودار هنوز نیامده است", width / 2, height / 2);
+    return;
+  }
+
+  const m1 = st.data["1m"];
+  const currentPrice = m1 && m1.length ? m1[m1.length - 1].c : candles[candles.length - 1].c;
+  let min = Infinity, max = -Infinity;
+  for (const c of candles) { min = Math.min(min, c.l); max = Math.max(max, c.h); }
+  min = Math.min(min, currentPrice); max = Math.max(max, currentPrice);
+  if (!(max > min)) { const pad0 = Math.max(Math.abs(max) * 0.0005, 0.0001); min -= pad0; max += pad0; }
+  const pad = (max - min) * 0.10; min -= pad; max += pad;
+  const y = function(v) { return top + (max - v) / (max - min) * plotH; };
+  const step = plotW / candles.length;
+  const x = function(i) { return left + step * (i + 0.5); };
+
+  // Horizontal grid + price labels.
+  ctx.font = "10.5px Tahoma"; ctx.textBaseline = "middle";
+  for (let g = 0; g <= 4; g++) {
+    const price = max - (max - min) * g / 4;
+    const yy = y(price);
+    ctx.strokeStyle = "rgba(157,176,195,0.14)"; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(left, yy); ctx.lineTo(right, yy); ctx.stroke();
+    ctx.fillStyle = "#9db0c3"; ctx.textAlign = "left";
+    ctx.fillText(digits(price, dec), right + 6, yy);
+  }
+  // Vertical grid + Kabul time labels (first, thirds, last).
+  const labelIdx = [...new Set([0, Math.floor((candles.length - 1) / 3), Math.floor(2 * (candles.length - 1) / 3), candles.length - 1])];
+  ctx.textAlign = "center";
+  for (const i of labelIdx) {
+    const xx = x(i);
+    ctx.strokeStyle = "rgba(157,176,195,0.08)";
+    ctx.beginPath(); ctx.moveTo(xx, top); ctx.lineTo(xx, bottom); ctx.stroke();
+    ctx.fillStyle = "#9db0c3";
+    ctx.fillText(fmtKabul.format(new Date(candles[i].t * 1000)), xx, bottom + 14);
+  }
+
+  // Current price dashed line + tag.
+  const py = y(currentPrice);
+  ctx.save();
+  ctx.strokeStyle = "rgba(56,189,248,0.85)"; ctx.lineWidth = 1; ctx.setLineDash([5, 4]);
+  ctx.beginPath(); ctx.moveTo(left, py); ctx.lineTo(right, py); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = "#38bdf8"; roundedRectPath(ctx, right + 2, py - 9, axisW - 4, 18, 4); ctx.fill();
+  ctx.fillStyle = "#06131d"; ctx.font = "bold 10.5px Tahoma"; ctx.textAlign = "center";
+  ctx.fillText(digits(currentPrice, dec), right + 2 + (axisW - 4) / 2, py + 0.5);
+  ctx.restore();
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  const period = tf * 60;
+  let liveIdx = -1;
+  for (let i = 0; i < candles.length; i++) {
+    if (candles[i].t <= nowSec && nowSec < candles[i].t + period) { liveIdx = i; break; }
+  }
+  if (liveIdx < 0 && candles.length) liveIdx = candles.length - 1;
+  const bodyW = Math.max(2, Math.min(11, step * 0.62));
+
+  // Candles and wicks.
+  for (let i = 0; i < candles.length; i++) {
+    const c = candles[i], up = c.c >= c.o;
+    const col = up ? "#22c55e" : "#ef4444";
+    const xx = x(i);
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = Math.max(1, Math.min(1.6, step * 0.16));
+    ctx.beginPath(); ctx.moveTo(xx, y(c.h)); ctx.lineTo(xx, y(c.l)); ctx.stroke();
+    const y1 = y(Math.max(c.o, c.c)), y2 = y(Math.min(c.o, c.c));
+    ctx.fillRect(xx - bodyW / 2, y1, bodyW, Math.max(1.5, y2 - y1));
+  }
+
+  // Pending entry candle ring (the candle after a still-open signal).
+  if (tf === 1) {
+    const hist = getHistory().filter(function(z) { return z.pair === p.name; });
+    const pendingEntries = new Set(hist.filter(function(z) { return !z.result; }).map(function(z) { return z.signalT + 60; }));
+    for (let i = 0; i < candles.length; i++) {
+      if (!pendingEntries.has(candles[i].t)) continue;
+      const c = candles[i], xx = x(i);
+      ctx.save();
+      ctx.strokeStyle = "#f59e0b"; ctx.lineWidth = 2; ctx.setLineDash([4, 3]);
+      roundedRectPath(ctx, xx - bodyW / 2 - 3, y(Math.max(c.o, c.c)) - 4, bodyW + 6, Math.abs(y(c.o) - y(c.c)) + 8, 5);
+      ctx.stroke(); ctx.restore();
+    }
+    // Session signal arrows, persisted through localStorage history.
+    const bySignalT = new Map(hist.map(function(z) { return [z.signalT, z]; }));
+    ctx.font = "bold 14px Tahoma"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+    for (let i = 0; i < candles.length; i++) {
+      const sig = bySignalT.get(candles[i].t);
+      if (!sig) continue;
+      const buy = sig.dir === 1;
+      const cx = x(i);
+      let cy = buy ? y(candles[i].l) + 16 : y(candles[i].h) - 16;
+      cy = Math.max(top + 11, Math.min(bottom - 11, cy));
+      ctx.save();
+      ctx.fillStyle = buy ? "#22c55e" : "#ef4444";
+      roundedRectPath(ctx, cx - 13, cy - 10, 26, 20, 10); ctx.fill();
+      ctx.strokeStyle = "rgba(255,255,255,0.75)"; ctx.lineWidth = 1; ctx.stroke();
+      ctx.fillStyle = "#ffffff";
+      ctx.fillText(buy ? "⬆" : "⬇", cx, cy + 0.5);
+      ctx.restore();
+    }
+  }
+
+  // Forming-candle pulse outline + live dot.
+  if (liveIdx >= 0) {
+    const c = candles[liveIdx], xx = x(liveIdx);
+    const pulse = 0.45 + 0.30 * (0.5 + 0.5 * Math.sin(Date.now() / 420));
+    ctx.save();
+    ctx.strokeStyle = "rgba(56,189,248," + pulse.toFixed(3) + ")"; ctx.lineWidth = 2;
+    roundedRectPath(ctx, xx - bodyW / 2 - 3, y(Math.max(c.o, c.c)) - 4, bodyW + 6, Math.abs(y(c.o) - y(c.c)) + 8, 5);
+    ctx.stroke();
+    ctx.fillStyle = "#38bdf8"; ctx.beginPath(); ctx.arc(xx, 8, 3.5, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255," + pulse.toFixed(3) + ")"; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.arc(xx, 8, 6, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+    if (liveEl) { liveEl.textContent = "● زنده"; liveEl.style.color = "var(--blue)"; }
+  } else if (liveEl) {
+    liveEl.textContent = "آخرین داده"; liveEl.style.color = "var(--dim)";
+  }
+}
+function drawAllCharts() { for (const p of PAIRS) { renderVerdict(p); drawChart(p); } }
 
 /* ---------- history / counters ---------- */
 function getHistory() { return loadJson(LS_HIST, []); }
@@ -937,6 +1252,7 @@ function evaluate(p, st) {
   if (candleT !== st.lastClosedT) {
     const isFirst = st.lastClosedT === -1;
     st.lastClosedT = candleT;
+    let signalFired = false;
     if (!isFirst && td.D !== 0 && rotation && trigger === td.D) {
       const kabul = fmtKabul.format(new Date(moment * 1000));
       if (spike) {
@@ -944,6 +1260,7 @@ function evaluate(p, st) {
           "کندل خبر/جهش بود؛ ترید نمی‌شود · ساعت کابل " + kabul);
         buzz();
       } else if (st.lastSignalT !== candleT && !st.pending) {
+        signalFired = true;
         st.lastSignalT = candleT;
         const dir = td.D;
         st.pending = { dir: dir, signalT: candleT, entryT: candleT + 60 };
@@ -960,6 +1277,14 @@ function evaluate(p, st) {
           "۱ دقیقه · ساعت کابل " + kabul + " · جهت سیشن + چرخش کامل + تریگر " + p.triggerFa);
         beep(); buzz();
       }
+    }
+    if (!isFirst) {
+      recordVerdict(p, candleT, ev, signalFired);
+    } else if (!firstBlockReason(ev, true).trade) {
+      // First look after opening the app: present a no-trade outcome at once,
+      // but a trade outcome waits for a live candle close so the verdict box
+      // and the signal banner/history always agree (single evaluation).
+      recordVerdict(p, candleT, ev, false);
     }
   }
   renderPair(p);
@@ -1010,6 +1335,8 @@ function clockTick() {
   document.getElementById("ring").style.strokeDashoffset = String(201 * (1 - remain / 60));
 }
 setInterval(clockTick, 250); clockTick();
+setInterval(drawAllCharts, 1000);  // live forming candle pulse/countdown (well under 5s)
+window.addEventListener("resize", drawAllCharts);
 
 /* ---------- boot ---------- */
 buildCards();
@@ -1028,8 +1355,10 @@ for (const p of PAIRS) {
       break;
     }
   }
+  if (st.verdicts && st.verdicts.length) st.verdict = st.verdicts[st.verdicts.length - 1];
 }
 renderHistory();
+drawAllCharts();
 tick(true);
 setInterval(function() { tick(false); }, 15000);          // 1m refresh ~15s
 setInterval(function() { tick(true); }, 10 * 60 * 1000);  // HTF refresh rarely
