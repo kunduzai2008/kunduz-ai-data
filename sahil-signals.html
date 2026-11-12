@@ -29,6 +29,8 @@
   .status{border:1px solid var(--line); background:var(--card2); border-radius:10px; padding:8px 12px; font-size:14px; color:var(--dim); margin-bottom:12px; display:flex; flex-wrap:wrap; gap:6px 16px; justify-content:space-between}
   .status b{color:var(--txt)}
   .status .err{color:var(--red); font-weight:bold}
+  .diag{font-size:11.5px; color:var(--dim); opacity:.75; padding:0 4px; margin:-6px 0 12px; direction:ltr; text-align:left; word-break:break-word}
+  .diag:empty{display:none}
   .pairs{display:grid; grid-template-columns:1fr; gap:14px}
   @media (min-width:900px){
     .pairs{grid-template-columns:1fr 1fr}
@@ -133,6 +135,7 @@
     <span>آخرین به‌روزرسانی: <b id="lastUpd">—</b></span>
     <span id="statusMsg"></span>
   </div>
+  <div class="diag" id="diagLine"></div>
 
   <div class="banner" id="signalBanner">
     <button id="bannerClose">بستن ✕</button>
@@ -655,6 +658,7 @@ const LS_CACHE = "ss1_cache_";
 const LS_HIST = "ss1_history";
 const LS_VERD = "ss1_verdicts_";
 const LS_HTF = "ss1_htf_";
+const LS_ROUTE = "ss_route_";   // winning fetch route per series key
 const state = {};   // per pair runtime state
 let audioCtx = null, soundOn = false;
 
@@ -684,17 +688,64 @@ function saveJson(key, val) {
   try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) { /* quota: ignore */ }
 }
 
-/* ---------- fetch chain ---------- */
-function yahooUrls(symbol, interval, range) {
+/* ---------- fetch chain (transport only; rebuilt 2026-11-12) ----------
+   Yahoo serves the data but sends NO CORS header, so a browser page can
+   only read it through a CORS proxy. Verified on 2026-11-12 (see
+   feed_test_report.md): corsproxy.io now demands an API key (removed);
+   codetabs and allorigins are the structurally-correct public proxies
+   (allorigins proved it echoes this page's Origin in Access-Control-
+   Allow-Origin); both were down/degraded that day, so the chain keeps
+   them in best-first order, REMEMBERS the route that works per series,
+   re-probes after 2 consecutive failures, and reports per-route failure
+   kinds in the diagnostics line so a user screenshot names the blocker. */
+const ROUTE_TIMEOUT_MS = 8000;
+const routeFails = {};   // routeId -> consecutive failures (for winner memory)
+let lastAttemptDiag = ""; // diagnostics of the most recent 1m fetch attempt
+
+function routeChain(symbol, interval, range) {
   const q = "?interval=" + interval + "&range=" + range;
   const d1 = "https://query1.finance.yahoo.com/v8/finance/chart/" + symbol + q;
   const d2 = "https://query2.finance.yahoo.com/v8/finance/chart/" + symbol + q;
+  const e1 = encodeURIComponent(d1);
   return [
-    { url: d1, label: "Yahoo مستقیم" },
-    { url: d2, label: "Yahoo مستقیم (۲)" },
-    { url: "https://api.allorigins.win/raw?url=" + encodeURIComponent(d1), label: "AllOrigins" },
-    { url: "https://corsproxy.io/?url=" + encodeURIComponent(d1), label: "CorsProxy" },
+    { id: "codetabs",    label: "Codetabs",        url: "https://api.codetabs.com/v1/proxy?quest=" + e1 },
+    { id: "ao-raw",      label: "AllOrigins",      url: "https://api.allorigins.win/raw?url=" + e1 },
+    { id: "ao-get",      label: "AllOrigins (get)", url: "https://api.allorigins.win/get?url=" + e1, wrapped: true },
+    { id: "corslol",     label: "cors.lol",        url: "https://api.cors.lol/?url=" + e1 },
+    { id: "direct1",     label: "Yahoo مستقیم",    url: d1, direct: true },
+    { id: "direct2",     label: "Yahoo مستقیم (۲)", url: d2, direct: true },
   ];
+}
+function failKindFa(kind) {
+  switch (kind) {
+    case "timeout":  return "timeout (۸ ثانیه گذشت)";
+    case "network":  return "خطای شبکه";
+    case "no-cors":  return "no-CORS (یاهو اجازهٔ خواندن به مرورگر نمی‌دهد)";
+    case "bad-data": return "دادهٔ نامعتبر";
+    default:         return kind; // "HTTP nnn"
+  }
+}
+async function fetchRoute(route) {
+  const ctl = new AbortController();
+  const timer = setTimeout(function() { ctl.abort(); }, ROUTE_TIMEOUT_MS);
+  try {
+    const resp = await fetch(route.url, { cache: "no-store", signal: ctl.signal });
+    if (!resp.ok) return { ok: false, kind: "HTTP " + resp.status };
+    let json = null;
+    try { json = await resp.json(); } catch (e) { return { ok: false, kind: "bad-data" }; }
+    if (route.wrapped && json && typeof json.contents === "string") {
+      try { json = JSON.parse(json.contents); } catch (e) { return { ok: false, kind: "bad-data" }; }
+    } else if (route.wrapped && json && json.contents && typeof json.contents === "object") {
+      json = json.contents;
+    }
+    const candles = parseYahoo(json);
+    if (!candles) return { ok: false, kind: "bad-data" };
+    return { ok: true, candles: candles };
+  } catch (e) {
+    if (e && e.name === "AbortError") return { ok: false, kind: "timeout" };
+    // a TypeError on a direct Yahoo URL is (almost surely) the CORS block
+    return { ok: false, kind: route.direct ? "no-cors" : "network" };
+  } finally { clearTimeout(timer); }
 }
 function parseYahoo(json) {
   try {
@@ -711,13 +762,30 @@ function parseYahoo(json) {
   } catch (e) { return null; }
 }
 async function fetchSeries(symbol, spec) {
-  for (const cand of yahooUrls(symbol, spec.interval, spec.range)) {
-    try {
-      const resp = await fetch(cand.url, { cache: "no-store" });
-      if (!resp.ok) continue;
-      const candles = parseYahoo(await resp.json());
-      if (candles) return { candles: candles, src: cand.label };
-    } catch (e) { /* try next */ }
+  const chain = routeChain(symbol, spec.interval, spec.range);
+  const memKey = LS_ROUTE + symbol + "_" + spec.key;
+  const winnerId = loadJson(memKey, null);
+  let ordered = chain;
+  if (winnerId) {
+    const w = chain.filter(function(r) { return r.id === winnerId; });
+    if (w.length) ordered = w.concat(chain.filter(function(r) { return r.id !== winnerId; }));
+  }
+  const diag = [];
+  for (const route of ordered) {
+    const r = await fetchRoute(route);
+    if (r.ok) {
+      routeFails[route.id] = 0;
+      saveJson(memKey, route.id);
+      if (spec.key === "1m") lastAttemptDiag = "";
+      return { candles: r.candles, src: route.label };
+    }
+    routeFails[route.id] = (routeFails[route.id] || 0) + 1;
+    diag.push(route.id + ": " + failKindFa(r.kind));
+    // winner memory expires after 2 consecutive failures of the winner
+    if (winnerId && route.id === winnerId && routeFails[route.id] >= 2) saveJson(memKey, null);
+  }
+  if (spec.key === "1m") {
+    lastAttemptDiag = "تلاش اخیر برای دادهٔ ۱ دقیقه — " + diag.join(" · ");
   }
   return null;
 }
@@ -1299,9 +1367,11 @@ async function refreshPair(p, withHtf) {
     const r = await fetchSeries(p.symbol, spec);
     if (r) {
       st.data[spec.key] = r.candles; ok = true; srcUsed = r.src;
+      if (spec.key === "1m") st.live1m = true;
       saveJson(LS_CACHE + p.symbol + "_" + spec.key, r.candles);
     } else if (st.data[spec.key]) {
       ok = true; // cached copy still usable
+      if (spec.key === "1m") st.live1m = false;
     }
   }
   if (srcUsed) st.src = srcUsed;
@@ -1318,6 +1388,11 @@ function setStatus() {
   if (!anyOk) msg.innerHTML = '<span class="err">داده در دسترس نیست — اتصال انترنت را چک کنید (هیچ عددی ساخته نمی‌شود)</span>';
   else if (srcs.length) msg.textContent = "";
   else msg.textContent = "نمایش از حافظهٔ محلی (آخرین دادهٔ ذخیره‌شده)";
+  // per-route diagnostics of the last 1m attempt — a screenshot of this
+  // line tells us exactly which route the user's network blocked, and how.
+  const diagEl = document.getElementById("diagLine");
+  const allLive = PAIRS.every(function(p) { return state[p.name].live1m; });
+  if (diagEl) diagEl.textContent = allLive ? "" : lastAttemptDiag;
 }
 
 async function tick(full) {
